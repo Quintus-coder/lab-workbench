@@ -21,6 +21,8 @@
 !/src/group_compute/static/office.js
 !/src/group_compute/static/reading-layout.js
 !/src/group_compute/templates/index.html
+!/src/group_compute/templates/activate.html
+!/src/group_compute/static/activate.js
 !/src/group_compute/templates/office.html
 !/tests/test_auth_api.py
 !/tests/test_paths.py

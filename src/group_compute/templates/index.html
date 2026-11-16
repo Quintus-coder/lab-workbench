@@ -93,6 +93,7 @@
           <span id="identity">未登录</span>
           <span id="identity-role" class="role-badge" hidden>管理员</span>
         </span>
+        <button id="members-toggle" type="button" class="quiet" hidden>成员管理</button>
         <button id="logout" type="button" class="quiet" hidden>退出</button>
       </div>
     </div>
@@ -106,6 +107,7 @@
     </button>
   </div>
 
+  {% if development %}
   <section id="login" class="login-stage">
     <div class="login-shell">
       <div class="login-brief">
@@ -190,6 +192,7 @@
   </section>
 
 
+  {% endif %}
   <main id="workspace" class="workspace" hidden>
     <div id="workbench" class="workbench">
       <aside id="files-pane" class="files-panel" aria-label="项目文件">
@@ -474,6 +477,17 @@
     </div>
   </main>
 
+  <dialog id="members-dialog" aria-labelledby="members-title">
+    <div class="panel-title"><h2 id="members-title">成员管理</h2><button type="button" class="quiet close-dialog">关闭</button></div>
+    <form id="invite-form" class="account-fields">
+      <label for="invite-email">按邮箱邀请组员</label>
+      <input type="email" id="invite-email" maxlength="254" required placeholder="填写完整学校邮箱">
+      <button type="submit" class="primary">加入邀请名单</button>
+    </form>
+    <p class="muted">邀请后请把工作台网址发给组员，并确认 Access 策略允许该邮箱登录。</p>
+    <p id="members-status" role="status" aria-live="polite"></p>
+    <ul id="member-list"></ul>
+  </dialog>
   <dialog id="project-dialog">
     <form id="project-form">
       <div class="panel-title">

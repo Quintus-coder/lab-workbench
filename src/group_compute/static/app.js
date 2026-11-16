@@ -213,7 +213,7 @@ document.querySelectorAll(".role-card").forEach(btn => {
     syncRoleCards(btn.dataset.member);
   };
 });
-$("login-member").onchange = () => syncRoleCards($("login-member").value);
+if ($("login-member")) $("login-member").onchange = () => syncRoleCards($("login-member").value);
 
 function editorLines() {
   $("editor-lines").textContent = $("editor-text").value.split("\n").map((_, i) => i + 1).join("\n");
@@ -628,7 +628,8 @@ async function enter() {
   $("identity").textContent = S.me.name;
   $("identity-role").hidden = !S.me.admin;
   $("logout").hidden = false;
-  $("login").hidden = true;
+  if ($("login")) $("login").hidden = true;
+  $("members-toggle").hidden = !S.me.admin;
   $("workspace").hidden = false;
   $("admin-filter").hidden = !S.me.admin;
   $("main-navigation").hidden = false;
@@ -1012,7 +1013,7 @@ $("copy-log").onclick = guarded(async () => {
   }
 });
 
-$("login-form").onsubmit = guarded(async e => {
+if ($("login-form")) $("login-form").onsubmit = guarded(async e => {
   e.preventDefault();
   await api("/api/dev/login", "POST", { member_id: $("login-member").value });
   await enter();
@@ -1025,8 +1026,54 @@ $("logout").onclick = guarded(async () => {
   }
   if (S.editingBusy) throw new Error("文件正在保存或读取，请稍后退出。");
   if (S.editor?.dirty && !await ask("当前文件有未保存修改，放弃修改并退出？")) return;
-  await api("/api/logout", "POST", {});
-  location.reload();
+  const result = await api("/api/logout", "POST", {});
+  if (result.redirect) location.replace(result.redirect);
+  else location.reload();
+});
+
+async function refreshMembers() {
+  const list = $("member-list");
+  const members = await api("/api/members");
+  const labels = {active: "已激活", pending: "待激活", disabled: "已停用"};
+  list.replaceChildren();
+  for (const m of members) {
+    const item = node("li");
+    const info = node("div");
+    info.append(node("strong", m.name || m.email), node("small", (m.name ? m.email + " · " : "") +
+      (m.admin ? "管理员 · " : "") + labels[m.status], "muted"));
+    item.append(info);
+    if (!m.admin) {
+      const enable = m.status === "disabled";
+      const action = node("button", enable ? "恢复" : "停用", "quiet");
+      action.type = "button";
+      action.setAttribute("aria-label", action.textContent + " " + m.email);
+      action.onclick = guarded(async () => {
+        if (!enable && !await ask("停用 " + m.email + "？已有文件和任务会保留。")) return;
+        try {
+          await api("/api/members/" + encodeURIComponent(m.id) + "/enabled", "POST", {enabled: enable});
+          await refreshMembers();
+          $("members-status").textContent = m.email + (enable ? " 已恢复。" : " 已停用。");
+        } catch (e) { $("members-status").textContent = e.message; }
+      });
+      item.append(action);
+    }
+    list.append(item);
+  }
+}
+$("members-toggle").onclick = guarded(async () => {
+  $("members-dialog").showModal();
+  $("members-status").textContent = "正在读取名单…";
+  try { await refreshMembers(); $("members-status").textContent = ""; }
+  catch (e) { $("members-status").textContent = e.message; }
+});
+$("invite-form").onsubmit = guarded(async e => {
+  e.preventDefault();
+  try {
+    const m = await api("/api/members", "POST", {email: $("invite-email").value.trim()});
+    $("invite-form").reset();
+    await refreshMembers();
+    $("members-status").textContent = m.email + " 已加入邀请名单。";
+  } catch (e) { $("members-status").textContent = e.message; }
 });
 
 $("new-project").onclick = () => {
@@ -1213,10 +1260,6 @@ async function boot() {
     const o = node("option", label);
     o.value = key;
     $("environment").append(o);
-  }
-  if (!S.config.development) {
-    $("login").hidden = true;
-    $("logout").hidden = true;
   }
   try {
     await enter();

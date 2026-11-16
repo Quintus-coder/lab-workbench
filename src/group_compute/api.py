@@ -17,7 +17,7 @@ from .auth import AccessAuthenticator, AuthenticationError
 from .config import AppConfig
 from .office import OfficeService
 from .paths import Workspace, InvalidPath, StorageFull, UnsupportedText, relative_path, safe_open
-from .store import Store, Conflict, Forbidden, NotFound, TERMINAL
+from .store import Store, Conflict, Forbidden, NotFound, TERMINAL, normalized_email
 
 
 class Form(BaseModel):
@@ -30,6 +30,30 @@ class ProjectForm(Form):
 
 class LoginForm(Form):
     member_id: str = Field(min_length=1, max_length=64)
+
+
+class InviteForm(Form):
+    email: str = Field(max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def check_email(cls, value):
+        return normalized_email(value)
+
+
+class ActivateForm(Form):
+    name: str = Field(min_length=1, max_length=64)
+
+    @field_validator("name")
+    @classmethod
+    def check_name(cls, value):
+        if not value.strip() or not value.strip().isprintable():
+            raise ValueError("请输入姓名")
+        return value.strip()
+
+
+class EnabledForm(Form):
+    enabled: bool
 
 
 class UploadForm(Form):
@@ -102,6 +126,7 @@ def create_app(config: AppConfig, store=None, workspace=None, authenticator=None
     root = Path(config.data_root).absolute()
     root.mkdir(parents=True, exist_ok=True)
     store = store or Store(root / "state.sqlite")
+    store.configure_members(config.mode, config.bootstrap_admin_email)
     workspace = workspace or Workspace(root / "files", store, config.limits)
     if config.mode == "development":
         for mid, name, admin in [("admin", "试用管理员", True), ("alice", "组员甲", False), ("bob", "组员乙", False)]:
@@ -139,16 +164,24 @@ def create_app(config: AppConfig, store=None, workspace=None, authenticator=None
             return JSONResponse({"error": message}, status)
         app.add_exception_handler(error_class, domain_error)
 
-    def member(request):
+    def verified_email(request):
+        return authenticator.authenticate(request.headers.get("cf-access-jwt-assertion", ""))["email"]
+
+    def identity(request):
         if config.mode == "production":
-            claims = authenticator.authenticate(request.headers.get("cf-access-jwt-assertion", ""))
-            return store.member_by_email(claims["email"])
+            return store.member_by_email(verified_email(request))
         token = request.cookies.get("gc_session", "")
         with store.connect() as c:
             row = c.execute("SELECT member FROM sessions WHERE token=? AND expires>?", (token, time.time())).fetchone()
         if row is None:
             raise AuthenticationError("请先选择本地试用身份")
         return store.member(row["member"])
+
+    def member(request):
+        m = identity(request)
+        if not m["enabled"] or not m["activated"]:
+            raise Forbidden("账号已停用或尚未完成注册")
+        return m
 
     package = Path(__file__).parent
     templates = Environment(loader=FileSystemLoader(package / "templates"), autoescape=select_autoescape())
@@ -157,7 +190,15 @@ def create_app(config: AppConfig, store=None, workspace=None, authenticator=None
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
         if config.mode == "production":
-            member(request)
+            email = verified_email(request)
+            try:
+                account = store.member_by_email(email)
+            except Forbidden:
+                account = None
+            if not account or not account["enabled"] or not account["activated"]:
+                pending = bool(account and account["enabled"])
+                return HTMLResponse(templates.get_template("activate.html").render(email=email, pending=pending),
+                                    status_code=200 if pending else 403)
         return templates.get_template("index.html").render(development=config.mode == "development")
 
     @app.get("/api/config")
@@ -234,11 +275,37 @@ def create_app(config: AppConfig, store=None, workspace=None, authenticator=None
 
     @app.post("/api/logout")
     def logout(request: Request):
+        if config.mode == "production":
+            return {"ok": True, "redirect": "/cdn-cgi/access/logout"}
         with store.connect(True) as c:
             c.execute("DELETE FROM sessions WHERE token=?", (request.cookies.get("gc_session", ""),))
         response = JSONResponse({"ok": True})
         response.delete_cookie("gc_session")
         return response
+
+    @app.post("/api/activate")
+    async def activate(request: Request):
+        if config.mode != "production":
+            raise NotFound("入口不存在")
+        email = await run_in_threadpool(verified_email, request)
+        data = await form(request, ActivateForm)
+        return await run_in_threadpool(store.activate, email, data.name)
+
+    @app.get("/api/members")
+    def list_members(request: Request):
+        return store.manage_members(member(request)["id"])
+
+    @app.post("/api/members")
+    async def invite(request: Request):
+        actor = await run_in_threadpool(member, request)
+        data = await form(request, InviteForm)
+        return await run_in_threadpool(store.manage_members, actor["id"], email=data.email)
+
+    @app.post("/api/members/{mid}/enabled")
+    async def membership(mid: str, request: Request):
+        actor = await run_in_threadpool(member, request)
+        data = await form(request, EnabledForm)
+        return await run_in_threadpool(store.manage_members, actor["id"], target=mid, enabled=data.enabled)
 
     @app.get("/api/me")
     def me(request: Request):

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>成员登录 · 实验工作台</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/activate.js" defer></script>
+</head>
+<body>
+  <main class="account-stage">
+    <section class="account-card" aria-labelledby="heading">
+      <span class="brief-kicker">实验工作台 · 成员登录</span>
+      <h1 id="heading">{{ '完成首次注册' if pending else '当前账号无法进入工作台' }}</h1>
+      <p class="muted">已验证邮箱：<strong>{{ email }}</strong></p>
+      {% if pending %}
+      <form id="activate-form" class="account-fields">
+        <label for="display-name">填写姓名</label>
+        <input id="display-name" name="name" autocomplete="name" maxlength="64" required autofocus>
+        <button type="submit" class="primary">完成注册并进入</button>
+        <span id="activate-error" role="alert"></span>
+      </form>
+      {% else %}
+      <p>请联系组内管理员，确认这个邮箱已受邀且未被停用。</p>
+      {% endif %}
+      <a href="/cdn-cgi/access/logout">退出当前账号</a>
+    </section>
+  </main>
+</body>
+</html>

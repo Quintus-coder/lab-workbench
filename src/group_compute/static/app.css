@@ -2487,3 +2487,15 @@ body.reading-focus { overflow: hidden; height: 100dvh; }
 #compact-document-tools #document-tools { flex-direction: column; align-items: stretch; gap: 0; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
 #compact-document-tools .document-link { border-color: transparent; background: transparent; }
 #compact-document-tools .document-link:hover { background: var(--hover-wash); }
+.account-stage { min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
+.account-card { width: min(100%, 440px); padding: 30px; background: var(--paper); border-radius: var(--radius-lg); box-shadow: var(--card-shadow); overflow-wrap: anywhere; }
+.account-card h1 { font-size: 1.5rem; margin-block: 16px; }
+.account-card a { display: inline-block; margin-top: 16px; color: var(--azure); }
+.account-fields { display: grid; gap: 10px; margin-block: 16px; }
+.account-fields button { justify-self: start; }
+#activate-error { color: var(--crimson); }
+#member-list { list-style: none; margin: 0; padding: 0; }
+#member-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 10px; border-top: 1px solid var(--hairline); }
+#member-list li div { min-width: 0; overflow-wrap: anywhere; }
+#member-list small { display: block; }
+#members-dialog { max-height: 85dvh; overflow-y: auto; }

@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -29,6 +30,22 @@ class NotFound(FileNotFoundError):
 
 def new_id():
     return uuid.uuid4().hex
+
+
+def normalized_email(value):
+    email = value.strip().lower()
+    local, sep, domain = email.partition("@")
+    if (not sep or not 0 < len(local) <= 64 or len(email) > 254 or local.startswith(".")
+            or local.endswith(".") or ".." in local or not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+", local)
+            or "." not in domain or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", s)
+                                        for s in domain.split("."))):
+        raise ValueError("请输入完整的邮箱地址")
+    return email
+
+
+def member_summary(row):
+    return {**{k: row[k] for k in ("id", "email", "name", "admin")},
+            "status": "disabled" if not row["enabled"] else "active" if row["activated"] else "pending"}
 
 
 def decode_job(row):
@@ -74,6 +91,63 @@ class Store:
             """)
             if "staged_id" not in {r[1] for r in c.execute("PRAGMA table_info(uploads)")}:
                 c.execute("ALTER TABLE uploads ADD COLUMN staged_id TEXT")
+        with self.connect(True) as c:
+            columns = {r[1] for r in c.execute("PRAGMA table_info(members)")}
+            for field in ("enabled", "activated"):
+                if field not in columns:
+                    c.execute(f"ALTER TABLE members ADD COLUMN {field} INTEGER NOT NULL DEFAULT 1")
+
+    def configure_members(self, mode, bootstrap_email=""):
+        with self.connect(True) as c:
+            c.execute("CREATE TABLE IF NOT EXISTS deployment(mode TEXT PRIMARY KEY)")
+            prior = c.execute("SELECT mode FROM deployment").fetchone()
+            demo = c.execute("SELECT 1 FROM members WHERE (id || '@example.org')=email AND id IN ('admin','alice','bob')").fetchone()
+            if (prior and prior[0] != mode) or (mode == "production" and demo):
+                raise ValueError("开发与正式模式必须使用独立的数据目录")
+            if not prior:
+                if mode == "development" and c.execute("SELECT 1 FROM members LIMIT 1").fetchone() and not demo:
+                    raise ValueError("已有成员的数据目录不能直接切到开发模式")
+                c.execute("INSERT INTO deployment VALUES(?)", (mode,))
+            if mode == "production" and not c.execute("SELECT 1 FROM members WHERE admin=1 AND enabled=1 AND activated=1").fetchone():
+                if not bootstrap_email:
+                    raise ValueError("请在首次启动时配置 GC_BOOTSTRAP_ADMIN_EMAIL")
+                email = normalized_email(bootstrap_email)
+                if c.execute("SELECT 1 FROM members WHERE email=?", (email,)).fetchone():
+                    raise ValueError("首次管理员邮箱已被使用，请核对数据目录")
+                c.execute("INSERT INTO members(id,email,name,admin) VALUES(?,?,?,1)", (new_id(), email, "管理员"))
+
+    def manage_members(self, actor, *, email=None, target=None, enabled=None):
+        with self.connect(write=email is not None or target is not None) as c:
+            if not c.execute("SELECT 1 FROM members WHERE id=? AND admin=1 AND enabled=1 AND activated=1", (actor,)).fetchone():
+                raise Forbidden("仅管理员可以管理成员")
+            if email is not None:
+                email = normalized_email(email)
+                if c.execute("SELECT 1 FROM members WHERE email=?", (email,)).fetchone():
+                    raise Conflict("此邮箱已在名单中")
+                target = new_id()
+                c.execute("INSERT INTO members(id,email,name,activated) VALUES(?,?,'',0)", (target, email))
+            elif target is not None:
+                row = c.execute("SELECT admin FROM members WHERE id=?", (target,)).fetchone()
+                if row is None:
+                    raise NotFound("成员不存在")
+                if row["admin"]:
+                    raise Forbidden("不能通过此入口更改管理员状态")
+                c.execute("UPDATE members SET enabled=? WHERE id=?", (int(enabled), target))
+                if not enabled:
+                    c.execute("UPDATE office_sessions SET active=0 WHERE owner=?", (target,))
+                    c.execute("DELETE FROM sessions WHERE member=?", (target,))
+            else:
+                return [member_summary(r) for r in c.execute("SELECT * FROM members ORDER BY admin DESC,email")]
+            return member_summary(c.execute("SELECT * FROM members WHERE id=?", (target,)).fetchone())
+
+    def activate(self, email, name):
+        with self.connect(True) as c:
+            row = c.execute("SELECT * FROM members WHERE email=? AND enabled=1", (email.lower(),)).fetchone()
+            if not row:
+                raise Forbidden("此账号没有有效邀请")
+            if not row["activated"]:
+                c.execute("UPDATE members SET activated=1,name=? WHERE id=?", (name, row["id"]))
+            return member_summary(c.execute("SELECT * FROM members WHERE id=?", (row["id"],)).fetchone())
 
     @contextmanager
     def connect(self, write=False, transaction=True):

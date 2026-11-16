@@ -265,3 +265,93 @@ def test_wrong_issuer_audience_or_expired_token_is_rejected():
             verifier.authenticate(jwt.encode({**valid, **change}, key, algorithm="RS256"))
     with pytest.raises(AuthenticationError):
         verifier.authenticate(jwt.encode(valid, "forged-signing-key-that-is-at-least-32-bytes", algorithm="HS256"))
+
+
+def test_invited_school_member_lifecycle(tmp_path):
+    issuer, base = "https://team.cloudflareaccess.com", "https://work.example.org"
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    verifier = AccessAuthenticator(issuer, "app", lambda _: key.public_key())
+    admin, student = "lead@school.example", "student@school.example"
+    config = AppConfig(tmp_path, mode="production", base_url=base, access_issuer=issuer,
+                       access_audience="app", bootstrap_admin_email=admin)
+    app = create_app(config, authenticator=verifier)
+    with TestClient(app, base_url=base) as c:
+        c.headers.update({"Origin": base, "X-Requested-With": "GroupCompute"})
+        def login(email):
+            c.headers["cf-access-jwt-assertion"] = jwt.encode(
+                dict(iss=issuer, aud="app", iat=int(time.time()), exp=int(time.time())+300,
+                     sub="id-"+email, email=email), key, algorithm="RS256")
+        assert c.get("/api/me", headers={"Cf-Access-Authenticated-User-Email": admin}).status_code == 401
+        login(student)
+        assert c.get("/").status_code == 403
+        assert c.post("/api/activate", json={"name":"未邀请"}).status_code == 403
+        login(admin)
+        assert c.get("/api/me").json()["admin"]
+        assert c.post("/api/members", json={"email":"@school.example"}).status_code == 422
+        invite = c.post("/api/members", json={"email":student.upper()}).json()
+        mid = invite["id"]
+        assert invite["status"] == "pending"
+        assert c.post("/api/members", json={"email":student}).status_code == 409
+        url = f"/api/members/{mid}/enabled"
+        assert c.post(url, json={"enabled":False}).status_code == 200
+        assert c.post(url, json={"enabled":True}).json()["status"] == "pending"
+        login(student)
+        assert "填写姓名" in c.get("/").text
+        assert c.get("/api/projects").status_code == c.get("/api/jobs").status_code == 403
+        assert c.post("/api/activate", json={"name":"   "}).status_code == 422
+        assert c.post("/api/activate", json={"name":"学生","admin":True}).status_code == 422
+        assert c.post("/api/activate", json={"name":"学生"}).json()["id"] == mid
+        assert c.post("/api/activate", json={"name":"不同姓名"}).json()["name"] == "学生"
+        assert "选择试用身份" not in c.get("/").text
+        assert c.get("/api/members").status_code == 403
+        assert c.post("/api/members", json={"email":"other@school.example"}).status_code == 403
+        assert c.post(url, json={"enabled":True}).status_code == 403
+        pid = project(c)
+        put(c, pid)
+        job = c.post("/api/projects/"+pid+"/jobs",json=dict(entry="main.py", environment="py312",args=[],request_id="once"))
+        assert job.status_code == 200, job.text
+        assert c.post("/api/logout").json()["redirect"] == "/cdn-cgi/access/logout"
+        login(admin)
+        assert c.post(url, json={"enabled":False}).json()["status"] == "disabled"
+        login(student)
+        assert c.get("/api/projects/"+pid+"/files").status_code == c.get("/api/jobs").status_code == 403
+        assert c.post("/api/activate", json={"name":"学生"}).status_code == 403
+        login(admin)
+        assert c.post(url, json={"enabled":True}).status_code == 200
+        login(student)
+        assert c.get("/api/me").json()["id"] == mid
+        assert c.get("/api/projects/"+pid+"/files").json()[0]["path"] == "main.py"
+        assert c.get("/api/jobs").json()[0]["id"] == job.json()["id"]
+    with pytest.raises(ValueError, match="数据目录"):
+        create_app(AppConfig(tmp_path))
+
+
+def test_production_refuses_preview_database(tmp_path):
+    create_app(AppConfig(tmp_path))
+    with pytest.raises(ValueError, match="数据目录"):
+        create_app(AppConfig(tmp_path, mode="production", base_url="https://work.example.org",
+                             access_issuer="https://team.cloudflareaccess.com", access_audience="app",
+                             bootstrap_admin_email="lead@school.example"))
+
+
+def test_existing_member_survives_upgrade_and_concurrent_activation(tmp_path):
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from group_compute.store import Store, Forbidden
+    with sqlite3.connect(tmp_path / "state.sqlite") as db:
+        db.execute("CREATE TABLE members(id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, admin INTEGER NOT NULL DEFAULT 0, last_served INTEGER NOT NULL DEFAULT 0)")
+        db.execute("INSERT INTO members VALUES('original','lead@school.example','原管理员',1,23)")
+    store = Store(tmp_path / "state.sqlite")
+    store.configure_members("production")
+    assert store.member("original")["last_served"] == 23
+    with pytest.raises(Forbidden):
+        store.manage_members("original", target="original", enabled=False)
+    email = "new@school.example"
+    mid = store.manage_members("original", email=email)["id"]
+    with ThreadPoolExecutor(2) as pool:
+        responses = list(pool.map(lambda name: store.activate(email, name), ["第一次", "第二次"]))
+    assert responses[0] == responses[1]
+    assert responses[0]["id"] == mid
+    store.configure_members("production", "another@school.example")
+    with pytest.raises(Forbidden):
+        store.member_by_email("another@school.example")

@@ -25,6 +25,7 @@ class AppConfig:
     limits: Limits = field(default_factory=Limits)
     access_issuer: str = ""
     access_audience: str = ""
+    bootstrap_admin_email: str = ""
     office_url: str = ""
     office_secret: str = field(default="", repr=False)
     office_callback_base: str = ""
