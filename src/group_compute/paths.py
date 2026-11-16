@@ -1,0 +1,420 @@
+import ctypes
+import json
+import os
+import re
+import shutil
+import stat
+import time
+from contextlib import contextmanager, ExitStack
+from pathlib import Path
+from .store import Conflict, Forbidden, NotFound, new_id
+
+
+class InvalidPath(ValueError):
+    pass
+
+
+class StorageFull(ValueError):
+    pass
+
+
+class UnsupportedText(ValueError):
+    pass
+
+
+def relative_path(value):
+    if not isinstance(value, str) or not value or len(value) > 500 or value.startswith(("/", "\\")):
+        raise InvalidPath("文件路径不合法")
+    parts = value.replace("\\", "/").split("/")
+    for part in parts:
+        stem = part.split(".")[0].upper()
+        if (part in ("", ".", "..") or part.endswith((".", " ")) or len(part) > 200
+            or any(ord(ch) < 32 or ch in '<>:"|?*' for ch in part)
+            or re.fullmatch(r"CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|(?:COM|LPT)[1-9¹²³]", stem)):
+            raise InvalidPath("路径含有上级目录、特殊名称或 Windows 不支持的字符")
+    return "/".join(parts)
+
+
+def _check_tree(root, path):
+    if not path.is_relative_to(root):
+        raise InvalidPath("文件不在授权目录内")
+    for item in (root, *[root.joinpath(*path.relative_to(root).parts[:i]) for i in range(1, len(path.relative_to(root).parts) + 1)]):
+        try:
+            info = item.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise InvalidPath("不允许符号链接或重解析点")
+
+
+def _final_path(fd):
+    if os.name != "nt":
+        return Path(os.path.realpath(f"/proc/self/fd/{fd}"))
+    import msvcrt
+    from ctypes import wintypes as w
+    fn = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
+    fn.argtypes = (w.HANDLE, w.LPWSTR, w.DWORD, w.DWORD)
+    fn.restype = w.DWORD
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = fn(msvcrt.get_osfhandle(fd), buffer, len(buffer), 0)
+    if not length or length >= len(buffer):
+        raise InvalidPath("无法验证最终文件位置")
+    return Path(buffer.value.removeprefix("\\\\?\\"))
+
+
+def safe_open(root, relative):
+    root = Path(root).absolute()
+    path = root / relative_path(relative)
+    _check_tree(root, path)
+    f = path.open("rb")
+    try:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode) or not _final_path(f.fileno()).is_relative_to(root):
+            raise InvalidPath("最终文件不在授权目录内")
+        _check_tree(root, path)
+        return f
+    except BaseException:
+        f.close()
+        raise
+
+
+@contextmanager
+def locked_directory(root, directory):
+    """Hold Windows parent handles without FILE_SHARE_DELETE during file mutations."""
+    _check_tree(root, directory)
+    if os.name != "nt":
+        directory.mkdir(parents=True, exist_ok=True)
+        _check_tree(root, directory)
+        yield
+        return
+    from ctypes import wintypes as w
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.argtypes = (w.LPCWSTR, w.DWORD, w.DWORD, ctypes.c_void_p, w.DWORD, w.DWORD, w.HANDLE)
+    create.restype = w.HANDLE
+    close = kernel.CloseHandle
+    close.argtypes = (w.HANDLE,)
+    with ExitStack() as stack:
+        current = root
+        for part in (None, *directory.relative_to(root).parts):
+            if part is not None:
+                current = current / part
+            current.mkdir(exist_ok=True)
+            handle = create(str(current), 0x80, 3, None, 3, 0x02200000, None)
+            if handle == ctypes.c_void_p(-1).value:
+                raise InvalidPath("目录正在被其他程序修改，请重试")
+            stack.callback(close, handle)
+            _check_tree(root, current)
+        yield
+
+
+class Workspace:
+    def __init__(self, root, store, limits):
+        self.root = Path(root).absolute()
+        self.store, self.limits = store, limits
+        for area in ("projects", "staging", "snapshots", "runs", "logs"):
+            (self.root / area).mkdir(parents=True, exist_ok=True)
+            _check_tree(self.root, self.root / area)
+
+    def _project(self, c, actor, project):
+        row = self.store.require_project(c, project, actor)
+        return self.root / "projects" / row["owner"] / row["id"]
+
+    def project_root(self, actor, project):
+        with self.store.connect() as c:
+            path = self._project(c, actor, project)
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+    def _free(self, additional=0):
+        if shutil.disk_usage(self.root).free < self.limits.min_free_bytes + additional:
+            raise StorageFull("剩余磁盘空间不足，已暂停新上传和提交")
+
+    def _files(self, root):
+        if not root.exists():
+            return []
+        found = []
+        for parent, dirs, names in os.walk(root, followlinks=False):
+            for name in dirs + names:
+                _check_tree(root, Path(parent) / name)
+            for name in names:
+                path = Path(parent) / name
+                with safe_open(root, path.relative_to(root).as_posix()) as f:
+                    info = os.fstat(f.fileno())
+                    found.append(dict(path=path.relative_to(root).as_posix(), size=info.st_size, modified=info.st_mtime,
+                                      version=json.dumps([info.st_ino, info.st_mtime_ns, info.st_size])))
+                if len(found) > self.limits.max_files:
+                    raise StorageFull("文件数量超过项目上限")
+        return sorted(found, key=lambda r: r["path"].casefold())
+
+    def list_project(self, actor, project):
+        with self.store.connect() as c:
+            return self._files(self._project(c, actor, project))
+
+    def open_project(self, actor, project, relative):
+        with self.store.connect() as c:
+            return safe_open(self._project(c, actor, project), relative)
+
+    def file_info(self, actor, project, relative):
+        relative = relative_path(relative)
+        with self.open_project(actor, project, relative) as f:
+            info = os.fstat(f.fileno())
+            return dict(path=relative, size=info.st_size,
+                        version=json.dumps([info.st_ino, info.st_mtime_ns, info.st_size]))
+
+    def delete_file(self, actor, project, relative, expected_version):
+        relative = relative_path(relative)
+        with self.store.connect(True) as c:
+            root = self._project(c, actor, project)
+            current = self._version(root, relative)
+            if current is None:
+                raise NotFound("文件不存在")
+            if current != expected_version:
+                raise Conflict("文件已改变，未删除；请刷新文件列表后重试")
+            pending = c.execute("SELECT relative FROM uploads WHERE project=? AND state='uploading'", (project,))
+            if any(row[0].casefold() == relative.casefold() for row in pending):
+                raise Conflict("该文件有未完成上传，请先继续或放弃上传再删除")
+            with locked_directory(root, (root / relative).parent):
+                if self._version(root, relative) != expected_version:
+                    raise Conflict("文件在删除前已改变，请刷新后重试")
+                try:
+                    (root / relative).unlink()
+                except PermissionError as exc:
+                    raise Conflict("文件正在使用中，请关闭预览或编辑后重试删除") from exc
+
+    def _text(self, root, relative):
+        with safe_open(root, relative) as f:
+            info = os.fstat(f.fileno())
+            raw = f.read(self.limits.max_text_bytes + 1)
+        if len(raw) > self.limits.max_text_bytes or b"\x00" in raw:
+            raise UnsupportedText("文件过大或属于二进制，请下载后查看；在线编辑仅支持小型 UTF-8 文本")
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise UnsupportedText("该文件不是 UTF-8 文本，请下载后使用原编码编辑") from exc
+        return dict(path=relative, text=text, size=len(raw),
+                    version=json.dumps([info.st_ino, info.st_mtime_ns, info.st_size]),
+                    encoding="UTF-8 BOM" if raw.startswith(b"\xef\xbb\xbf") else "UTF-8",
+                    newline="CRLF" if b"\r\n" in raw else "LF")
+
+    def read_text(self, actor, project, relative):
+        relative = relative_path(relative)
+        with self.store.connect() as c:
+            return self._text(self._project(c, actor, project), relative)
+
+    def save_text(self, actor, project, relative, text, expected_version):
+        relative = relative_path(relative)
+        with self.store.connect(True) as c:
+            root = self._project(c, actor, project)
+            root.mkdir(parents=True, exist_ok=True)
+            current_version = self._version(root, relative)
+            if current_version != expected_version:
+                raise Conflict("文件已被其他操作更新；你的编辑仍保留，请重新读取后再合并保存")
+            pending = c.execute("SELECT relative FROM uploads WHERE project=? AND state='uploading'", (project,))
+            if any(row[0].casefold() == relative.casefold() for row in pending):
+                raise Conflict("该文件有未完成上传，请先继续或放弃上传再编辑")
+            existing = self._text(root, relative) if current_version is not None else None
+            normalized = text.replace("\r\n", "\n")
+            if existing and existing["newline"] == "CRLF":
+                normalized = normalized.replace("\n", "\r\n")
+            try:
+                encoded = normalized.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise UnsupportedText("文本包含无法保存的 Unicode 字符") from exc
+            if existing and existing["encoding"] == "UTF-8 BOM":
+                encoded = b"\xef\xbb\xbf" + encoded
+            if b"\x00" in encoded or len(encoded) > min(self.limits.max_text_bytes, self.limits.max_file_bytes):
+                raise UnsupportedText("编辑内容过大或包含空字符，未保存")
+            self._free(len(encoded))
+            files = self._files(root)
+            old_size = existing["size"] if existing else 0
+            reserved = c.execute("SELECT coalesce(sum(total),0) FROM uploads WHERE project=? AND state='uploading'", (project,)).fetchone()[0]
+            if sum(f["size"] for f in files) - old_size + len(encoded) + reserved > self.limits.max_project_bytes:
+                raise StorageFull("项目空间已达到上限，编辑内容未保存")
+            if existing is None and len(files) >= self.limits.max_files:
+                raise StorageFull("文件数量达到上限，未创建文件")
+            temporary = self.root / "staging" / new_id()
+            try:
+                with temporary.open("xb") as f:
+                    f.write(encoded)
+                    f.flush()
+                    os.fsync(f.fileno())
+                with locked_directory(root, (root / relative).parent):
+                    if self._version(root, relative) != expected_version:
+                        raise Conflict("文件在保存期间已改变，编辑内容未覆盖")
+                    try:
+                        os.replace(temporary, root / relative)
+                    except PermissionError as exc:
+                        raise Conflict("文件正在使用中，原文件已保留，请稍后重试保存") from exc
+                return self._text(root, relative)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def _version(self, root, relative):
+        path = root / relative
+        _check_tree(root, path)
+        if not path.exists():
+            return None
+        with safe_open(root, relative) as f:
+            s = os.fstat(f.fileno())
+            return json.dumps([s.st_ino, s.st_mtime_ns, s.st_size])
+
+    def begin_upload(self, actor, project, relative, total, overwrite=False):
+        relative = relative_path(relative)
+        if type(total) is not int or not 0 <= total <= self.limits.max_file_bytes:
+            raise StorageFull("文件大小超过上限")
+        with self.store.connect(True) as c:
+            root = self._project(c, actor, project)
+            root.mkdir(parents=True, exist_ok=True)
+            original = self._version(root, relative)
+            if original is not None and not overwrite:
+                raise Conflict("同名文件已存在，请明确确认覆盖")
+            active = c.execute("SELECT count(*) FROM uploads WHERE owner=? AND state='uploading'", (actor,)).fetchone()[0]
+            if active >= self.limits.max_active_uploads:
+                raise Conflict("未完成的上传过多，请先继续或放弃旧上传")
+            reserved = c.execute("SELECT coalesce(sum(total),0) FROM uploads WHERE project=? AND state='uploading'", (project,)).fetchone()[0]
+            files = self._files(root)
+            size = sum(item["size"] for item in files)
+            if size + reserved + total > self.limits.max_project_bytes or len(files) + active >= self.limits.max_files:
+                raise StorageFull("项目空间或文件数量超过上限")
+            self._free(total)
+            uid = new_id()
+            staged = self.root / "staging" / uid
+            staged.touch(exist_ok=False)
+            info = staged.stat()
+            identity = json.dumps([info.st_dev, info.st_ino])
+            c.execute("INSERT INTO uploads(id,owner,project,relative,total,original,staged_id,created) VALUES(?,?,?,?,?,?,?,?)", (uid, actor, project, relative, total, original, identity, time.time()))
+            return dict(c.execute("SELECT * FROM uploads WHERE id=?", (uid,)).fetchone())
+
+    def _upload(self, c, actor, uid):
+        row = c.execute("SELECT * FROM uploads WHERE id=?", (uid,)).fetchone()
+        if row is None:
+            raise NotFound("上传记录不存在")
+        if row["owner"] != actor:
+            raise Forbidden("不能访问其他成员的上传")
+        return dict(row)
+
+    def upload_status(self, actor, uid):
+        with self.store.connect() as c:
+            return self._upload(c, actor, uid)
+
+    def write_chunk(self, actor, uid, offset, content):
+        if len(content) > self.limits.max_chunk_bytes:
+            raise StorageFull("分块超过上限")
+        with self.store.connect(True) as c:
+            u = self._upload(c, actor, uid)
+            if u["state"] != "uploading" or offset < 0 or offset > u["received"] or offset + len(content) > u["total"]:
+                raise Conflict("上传偏移不匹配，请刷新进度后重试")
+            self._free(len(content))
+            with (self.root / "staging" / uid).open("r+b") as f:
+                f.truncate(u["received"])
+                f.seek(offset)
+                if offset < u["received"]:
+                    if offset + len(content) > u["received"] or f.read(len(content)) != content:
+                        raise Conflict("重试的数据与已接收内容不一致")
+                    return u
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            c.execute("UPDATE uploads SET received=received+? WHERE id=?", (len(content), uid))
+            return self._upload(c, actor, uid)
+
+    def finalize(self, actor, uid):
+        with self.store.connect(True) as c:
+            u = self._upload(c, actor, uid)
+            if u["state"] == "complete":
+                return u
+            if u["state"] != "uploading" or u["received"] != u["total"]:
+                raise Conflict("文件尚未完整上传")
+            root = self._project(c, actor, u["project"])
+            target = root / u["relative"]
+            with locked_directory(root, target.parent):
+                staging = self.root / "staging" / uid
+                if not staging.exists():
+                    # A process may die after replace but before SQLite commits.
+                    # Compare the file's OS identity, never file hashes or content guesses.
+                    try:
+                        with safe_open(root, u["relative"]) as f:
+                            info = os.fstat(f.fileno())
+                            same = json.dumps([info.st_dev, info.st_ino]) == u["staged_id"] and info.st_size == u["total"]
+                    except FileNotFoundError:
+                        same = False
+                    if not same:
+                        raise Conflict("上传状态不完整，请放弃此上传后重新选择文件")
+                    c.execute("UPDATE uploads SET state='complete' WHERE id=?", (uid,))
+                    return self._upload(c, actor, uid)
+                if self._version(root, u["relative"]) != u["original"]:
+                    raise Conflict("目标文件在上传期间已改变，请重新确认覆盖")
+                # Same volume: replacement exposes the full file in one operation.
+                try:
+                    os.replace(staging, target)
+                except PermissionError as exc:
+                    raise Conflict("目标文件暂不能替换，可能正在下载或被其他程序占用；关闭后重试，原文件已保留") from exc
+                c.execute("UPDATE uploads SET state='complete' WHERE id=?", (uid,))
+            return self._upload(c, actor, uid)
+
+    def abandon(self, actor, uid):
+        with self.store.connect(True) as c:
+            u = self._upload(c, actor, uid)
+            if u["state"] == "uploading":
+                (self.root / "staging" / uid).unlink(missing_ok=True)
+                c.execute("UPDATE uploads SET state='abandoned' WHERE id=?", (uid,))
+
+    def _snapshot(self, c, actor, project):
+        root = self._project(c, actor, project)
+        files = self._files(root)
+        self._free(sum(item["size"] for item in files))
+        sid = new_id()
+        dest = self.root / "snapshots" / actor / sid
+        dest.mkdir(parents=True)
+        try:
+            for item in files:
+                target = dest / item["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with safe_open(root, item["path"]) as src, target.open("xb") as out:
+                    shutil.copyfileobj(src, out, 1024**2)
+            c.execute("INSERT INTO snapshots VALUES(?,?,?,?)", (sid, actor, project, time.time()))
+            return sid
+        except BaseException:
+            # Generated path wholly inside this application's snapshot area.
+            shutil.rmtree(dest)
+            raise
+
+    def snapshot(self, actor, project):
+        with self.store.connect(True) as c:
+            return self._snapshot(c, actor, project)
+
+    def submit(self, actor, project, environment, entry, args, request_id):
+        entry = relative_path(entry)
+        with self.store.connect(True) as c:
+            root = self._project(c, actor, project)
+            previous = self.store.find_request(c, actor, request_id)
+            if previous:
+                if (previous["project"], previous["environment"], previous["entry"], previous["args"]) != (project, environment, entry, args):
+                    raise Conflict("提交标识已被另一个任务使用")
+                return previous
+            with safe_open(root, entry):
+                pass
+            if c.execute("SELECT 1 FROM uploads WHERE project=? AND state='uploading' LIMIT 1", (project,)).fetchone():
+                raise Conflict("项目有未完成的上传，请继续或放弃上传后提交")
+            sid = self._snapshot(c, actor, project)
+            try:
+                return self.store.submit(actor, project, sid, environment, entry, args, request_id, connection=c)
+            except BaseException:
+                shutil.rmtree(self.root / "snapshots" / actor / sid)
+                raise
+
+    def open_snapshot(self, actor, sid, relative):
+        with self.store.connect() as c:
+            row = c.execute("SELECT owner FROM snapshots WHERE id=?", (sid,)).fetchone()
+            if not row or row["owner"] != actor:
+                raise Forbidden("不能访问该运行副本")
+            return safe_open(self.root / "snapshots" / actor / sid, relative)
+
+    def output_root(self, job):
+        return self.root / "runs" / job["owner"] / job["id"]
+
+    def list_outputs(self, job):
+        return self._files(self.output_root(job))
+
+    def open_output(self, job, relative):
+        return safe_open(self.output_root(job), relative)

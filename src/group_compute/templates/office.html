@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>文档编辑 · 实验工作台</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/office.js" defer></script>
+</head>
+<body class="office-page">
+  <header class="office-header">
+    <a href="/" target="_blank" rel="noopener" class="document-link">项目工作区 ↗</a>
+    <strong id="office-title">文档编辑</strong>
+    <a id="office-download" class="document-link" hidden>下载项目已保存版本</a>
+  </header>
+  <div class="office-statusbar">
+    <p id="office-status" role="status">正在连接…</p>
+    <p class="muted">使用编辑器的保存按钮后，确认此处显示“已写回项目”再提交任务。编辑期间不要在工作区覆盖或删除同一文件。</p>
+  </div>
+  <main class="office-container"><div id="office-editor"></div></main>
+</body>
+</html>
