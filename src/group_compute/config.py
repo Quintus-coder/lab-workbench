@@ -14,6 +14,8 @@ class Limits:
     max_log_bytes: int = 16 * 1024**2
     max_text_bytes: int = 1024**2
     max_office_bytes: int = 32 * 1024**2
+    max_image_preview_bytes: int = 32 * 1024**2
+    max_archive_bytes: int = 1024**3
 
 
 @dataclass
@@ -26,6 +28,7 @@ class AppConfig:
     access_issuer: str = ""
     access_audience: str = ""
     bootstrap_admin_email: str = ""
+    password_auth: bool = False
     office_url: str = ""
     office_secret: str = field(default="", repr=False)
     office_callback_base: str = ""

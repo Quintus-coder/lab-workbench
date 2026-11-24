@@ -1,4 +1,8 @@
 "use strict";
+try {
+  const theme = localStorage.getItem("gc_theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+} catch { /* Storage is optional for activation. */ }
 const form = document.getElementById("activate-form");
 if (form) form.addEventListener("submit", async event => {
   event.preventDefault();

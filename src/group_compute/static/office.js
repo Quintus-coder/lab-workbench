@@ -1,4 +1,8 @@
 "use strict";
+try {
+  const theme = localStorage.getItem("gc_theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+} catch { /* Storage is optional for document view. */ }
 const statusLine = document.getElementById("office-status");
 let changed = false;
 let editor;

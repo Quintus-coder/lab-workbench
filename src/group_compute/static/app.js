@@ -20,6 +20,7 @@ const S = {
   submitting: false,
   fileFilter: "",
   jobFilter: "all",
+  jobSearch: "",
   view: "workspace",
   queueOpen: false,
   openDirs: new Set()
@@ -36,6 +37,23 @@ const states = {
 };
 const terminal = state => ["succeeded", "failed", "cancelled", "interrupted"].includes(state);
 const size = n => n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
+
+function relativeTime(epochSeconds) {
+  const diff = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  return `${Math.floor(diff / 86400)} 天前`;
+}
+
+async function copyText(text, okMessage) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    message(okMessage);
+  } else {
+    throw new Error("当前浏览器不支持自动复制，请手动复制。");
+  }
+}
 
 function node(tag, text, cls) {
   const e = document.createElement(tag);
@@ -232,10 +250,11 @@ function updateTelemetry() {
 function editorControls() {
   const e = S.editor;
   const documentMode = Boolean(e?.kind && e.kind !== "text");
+  const isScript = Boolean(e && /\.(py|ps1)$/i.test(e.path));
   $("editor-delete").disabled = !e || e.version === null || S.editingBusy || S.busy;
   $("editor-save").hidden = documentMode;
-  $("editor-submit").hidden = documentMode;
-  $("environment").closest("label").hidden = documentMode;
+  $("editor-submit").hidden = documentMode || !isScript;
+  $("environment").closest("label").hidden = documentMode || !isScript;
   $("editor-path").textContent = e?.path || "选择文件";
   const kind = $("editor-kind");
   if (e) {
@@ -243,7 +262,7 @@ function editorControls() {
     const dot = base.lastIndexOf(".");
     const ext = dot > 0 && dot < base.length - 1 ? base.slice(dot + 1).toUpperCase() : "TEXT";
     kind.textContent = ext;
-    kind.dataset.script = String(/\.(py|ps1)$/i.test(e.path));
+    kind.dataset.script = String(isScript);
     kind.hidden = false;
   } else {
     kind.hidden = true;
@@ -253,8 +272,19 @@ function editorControls() {
   $("editor-state").dataset.dirty = String(Boolean(e?.dirty));
   if (documentMode) $("editor-state").textContent = e.kind === "pdf" ? "PDF 只读预览" : "项目文档";
   $("editor-save").disabled = !e || S.editingBusy || S.busy || !e.dirty;
+  $("editor-save").title = !e ? "请先打开或新建文件"
+    : S.busy ? "请等待当前上传完成后保存"
+    : S.editingBusy ? "正在读取或保存文件"
+    : !e.dirty ? "当前没有未保存的修改"
+    : "保存文件 (Ctrl+S)";
   $("editor-reload").disabled = !e || e.version === null || S.editingBusy;
-  $("editor-submit").disabled = !e || !/\.(py|ps1)$/i.test(e.path) || S.editingBusy || S.busy || S.submitting;
+  $("editor-submit").disabled = !isScript || S.editingBusy || S.busy || S.submitting;
+  $("editor-submit").title = !e ? "请先打开 .ps1 / .py 脚本"
+    : !isScript ? "仅 .ps1 / .py 脚本可提交"
+    : S.submitting ? "正在提交作业…"
+    : S.busy ? "请等待当前上传完成后再提交"
+    : S.editingBusy ? "正在读取或保存文件，请稍后提交"
+    : "保存并提交 (Ctrl+Enter)";
   $("editor-submit").querySelector("span").textContent = S.submitting ? "正在提交…" : "保存并提交";
   if (e) {
     const lineCount = e.text ? e.text.split("\n").length : 1;
@@ -321,12 +351,32 @@ function renderEditor() {
   editorControls();
 }
 
+function revealFileInTree(path) {
+  if (!path) return;
+  const parts = path.split("/");
+  for (let i = 1; i < parts.length; i++) {
+    S.openDirs.add(parts.slice(0, i).join("/"));
+  }
+  document.querySelectorAll("#files details").forEach(details => {
+    if (details.dataset.dirPath && S.openDirs.has(details.dataset.dirPath)) {
+      details.open = true;
+    }
+  });
+  const row = [...document.querySelectorAll("#files .tree-file")].find(r => r.dataset.path === path);
+  if (row) {
+    row.classList.add("is-selected");
+    row.querySelector("button")?.setAttribute("aria-pressed", "true");
+    row.scrollIntoView({block: "nearest"});
+  }
+}
+
 async function openEditor(path, reveal = true) {
   if (S.editingBusy) throw new Error("文件正在读取或保存，请稍后重试。");
   if (S.editor?.dirty && !await ask("有未保存的修改，放弃修改并读取文件？")) return;
   if (reveal) setView("workspace");
   S.editingBusy = true;
   renderEditor();
+  let loaded = false;
   try {
     const query = new URLSearchParams({path});
     if (/\.(pdf|docx?|xlsx?)$/i.test(path)) {
@@ -344,9 +394,11 @@ async function openEditor(path, reveal = true) {
         S.editor = {...data, kind: "binary", text: "", dirty: false};
       }
     }
+    loaded = true;
   } finally {
     S.editingBusy = false;
     renderEditor();
+    if (loaded && S.editor?.path === path) revealFileInTree(path);
   }
 }
 
@@ -383,6 +435,7 @@ async function saveEditor() {
     const text = saved.text.replace(/\r\n/g, "\n");
     S.editor = {...saved, text, original:text, dirty:false};
     await refreshFiles();
+    revealFileInTree(S.editor.path);
     message("文件已保存");
   } finally {
     S.editingBusy = false;
@@ -469,7 +522,7 @@ document.addEventListener("click", event => {
     if (!menu.contains(event.target)) menu.open = false;
     else if (event.target.closest("button, a")) {
       menu.open = false;
-      menu.querySelector("summary").focus();
+      if (!document.querySelector("dialog[open]")) menu.querySelector("summary").focus();
     }
   });
 });
@@ -525,6 +578,7 @@ function renderFiles() {
   function appendBranch(branch, parent) {
     for (const [name, child] of [...branch.dirs].sort((a,b) => a[0].localeCompare(b[0]))) {
       const details = node("details");
+      details.dataset.dirPath = child.path;
       details.open = Boolean(query) || S.openDirs.has(child.path) || Boolean(S.editor?.path.startsWith(child.path + "/"));
       const summary = node("summary");
       summary.append(svgIcon("#i-folder"), node("span", name));
@@ -649,6 +703,7 @@ function renderJobs() {
   $("job-count").textContent = String(S.jobs.length);
   $("history-count").textContent = String(S.jobs.length);
   $("waiting-count").textContent = String(activeCount);
+  $("waiting-count").dataset.active = String(activeCount > 0);
   $("hist-total").textContent = String(S.jobs.length);
   $("hist-active").textContent = String(activeCount);
   $("hist-succeeded").textContent = String(succeededCount);
@@ -656,12 +711,20 @@ function renderJobs() {
   updateTelemetry();
   $("queue-description").textContent = `${S.me.admin && $("all-jobs").checked ? "所有成员" : "我的所有项目"} · 执行器尚未接入`;
   $("job-filters").hidden = !S.jobs.length;
+  $("job-search").closest("label").hidden = !S.jobs.length;
   $("jobs").replaceChildren();
   $("job-history").replaceChildren();
 
+  const searchQuery = S.jobSearch.trim().toLocaleLowerCase();
+  const projectNameFor = j => S.projects.find(p => p.id === j.project)?.name || "其他项目";
+
   const filtered = S.jobs.filter(j => {
-    if (S.jobFilter === "active") return !terminal(j.state);
-    if (S.jobFilter === "done") return terminal(j.state);
+    if (S.jobFilter === "active" && terminal(j.state)) return false;
+    if (S.jobFilter === "done" && !terminal(j.state)) return false;
+    if (searchQuery) {
+      const proj = projectNameFor(j).toLocaleLowerCase();
+      if (!j.entry.toLocaleLowerCase().includes(searchQuery) && !proj.includes(searchQuery)) return false;
+    }
     return true;
   });
 
@@ -674,7 +737,7 @@ function renderJobs() {
     $("job-history").append(row);
   }
 
-  for (const j of S.jobs) {
+  function buildJobCard(j) {
     const card = node("article", undefined, "job-card");
     const meta = node("div", undefined, "job-meta");
     const b = node("button", j.entry, "job-open");
@@ -685,21 +748,53 @@ function renderJobs() {
     meta.append(b, status);
     const ownerLabel = j.owner === S.me.id ? "我的任务" : j.owner;
     const when = new Date(j.submitted * 1000).toLocaleString("zh-CN");
-    const projectName = S.projects.find(p => p.id === j.project)?.name || "其他项目";
-    card.append(meta, node("p", `${projectName} · ${ownerLabel}`), node("p", `${when} · ${j.id.slice(0, 8)}`));
-    $("jobs").append(card);
-    if (!filtered.includes(j)) continue;
+    const projectName = projectNameFor(j);
+    const timeLine = node("p");
+    const rel = node("span", relativeTime(j.submitted));
+    rel.title = when;
+    timeLine.title = when;
+    timeLine.append(rel, document.createTextNode(` · ${j.id.slice(0, 8)}`));
+    card.append(meta, node("p", `${projectName} · ${ownerLabel}`), timeLine);
+    return card;
+  }
+
+  const activeJobs = S.jobs.filter(j => !terminal(j.state));
+  const finishedJobs = S.jobs.filter(j => terminal(j.state));
+  if (activeJobs.length) {
+    $("jobs").append(node("h3", "进行中", "job-group-title"));
+    for (const j of activeJobs) $("jobs").append(buildJobCard(j));
+  }
+  if (finishedJobs.length) {
+    $("jobs").append(node("h3", "最近结束", "job-group-title"));
+    for (const j of finishedJobs) $("jobs").append(buildJobCard(j));
+  }
+
+  for (const j of filtered) {
+    const ownerLabel = j.owner === S.me.id ? "我的任务" : j.owner;
+    const when = new Date(j.submitted * 1000).toLocaleString("zh-CN");
+    const projectName = projectNameFor(j);
     const row = node("tr");
     const script = node("td");
-    script.append(node("code", j.entry), node("span", `${projectName} · ${j.environment} · ${ownerLabel}`, "muted"));
+    const scriptMeta = node("div", undefined, "history-script-meta");
+    const copyId = node("button", j.id.slice(0, 8), "quiet job-id-copy");
+    copyId.type = "button";
+    copyId.title = `点击复制任务 ID：${j.id}`;
+    copyId.setAttribute("aria-label", `复制任务 ID ${j.id}`);
+    copyId.onclick = guarded(() => copyText(j.id, `已复制任务 ID：${j.id.slice(0, 8)}`));
+    scriptMeta.append(copyId, node("span", j.environment, "muted"));
+    script.append(node("code", j.entry), scriptMeta);
+    const projectCell = node("td");
+    projectCell.append(node("span", projectName), node("span", ownerLabel, "muted"));
     const state = node("td");
     state.append(node("span", states[j.state] || j.state, "status " + j.state));
+    const timeCell = node("td", when);
+    timeCell.title = when;
     const action = node("td");
     const open = node("button", "查看输出", "quiet");
     open.type = "button";
     open.onclick = guarded(() => openJob(j.id));
     action.append(open);
-    row.append(node("td", j.id.slice(0, 8)), script, state, node("td", when), action);
+    row.append(script, projectCell, state, timeCell, action);
     $("job-history").append(row);
   }
 }
@@ -715,10 +810,26 @@ async function refreshJobs(force = false) {
   if (S.detail) await refreshDetail();
 }
 
+function syncConsoleEmptyState() {
+  const hasJob = Boolean(S.detail);
+  $("console-empty").hidden = hasJob;
+  document.querySelector("#console-output .console-heading").hidden = !hasJob;
+  $("job-detail").hidden = !hasJob;
+  $("job-log").hidden = !hasJob;
+  $("log-note").hidden = !hasJob;
+  $("job-results").hidden = !hasJob;
+  $("copy-log").hidden = !hasJob;
+  $("clear-console").hidden = !hasJob;
+}
+
+syncConsoleEmptyState();
+$("console-open-queue").onclick = () => setQueue(true);
+
 async function openJob(id) {
   S.detail = id;
   S.offset = 0;
   S.log = "";
+  syncConsoleEmptyState();
   $("job-log").textContent = "正在读取日志…";
   setView("workspace");
   showConsole("output");
@@ -1003,15 +1114,12 @@ document.querySelectorAll("#job-filters .filter-chip").forEach(btn => {
   };
 });
 
-$("copy-log").onclick = guarded(async () => {
-  const text = $("job-log").textContent || "";
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    message("运行日志已复制到剪贴板");
-  } else {
-    throw new Error("当前浏览器不支持自动复制，请手动选择日志文本。");
-  }
-});
+$("job-search").oninput = e => {
+  S.jobSearch = e.target.value;
+  renderJobs();
+};
+
+$("copy-log").onclick = guarded(() => copyText($("job-log").textContent || "", "运行日志已复制到剪贴板"));
 
 if ($("login-form")) $("login-form").onsubmit = guarded(async e => {
   e.preventDefault();
@@ -1034,7 +1142,7 @@ $("logout").onclick = guarded(async () => {
 async function refreshMembers() {
   const list = $("member-list");
   const members = await api("/api/members");
-  const labels = {active: "已激活", pending: "待激活", disabled: "已停用"};
+  const labels = {active: "已激活", pending: S.config.password_auth ? "已批准 · 待注册" : "待激活", disabled: "已停用"};
   list.replaceChildren();
   for (const m of members) {
     const item = node("li");
@@ -1072,7 +1180,7 @@ $("invite-form").onsubmit = guarded(async e => {
     const m = await api("/api/members", "POST", {email: $("invite-email").value.trim()});
     $("invite-form").reset();
     await refreshMembers();
-    $("members-status").textContent = m.email + " 已加入邀请名单。";
+    $("members-status").textContent = m.email + (S.config.password_auth ? " 已获准注册。" : " 已加入邀请名单。");
   } catch (e) { $("members-status").textContent = e.message; }
 });
 
@@ -1122,6 +1230,14 @@ document.querySelector(".console-tabs").addEventListener("keydown", e => {
   $("console-" + name + "-tab").focus();
 });
 $("editor-text").addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    const submitBtn = $("editor-submit");
+    if (!submitBtn.hidden && !submitBtn.disabled) {
+      e.preventDefault();
+      submitBtn.click();
+    }
+    return;
+  }
   if (e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.metaKey) return;
   e.preventDefault();
   const input = e.target;
@@ -1241,6 +1357,7 @@ $("clear-console").onclick = () => {
   S.detail = null;
   S.log = "";
   S.offset = 0;
+  syncConsoleEmptyState();
   $("job-title").textContent = "当前未选择任务";
   $("job-log").textContent = "尚未选择任务。";
   $("job-detail").textContent = "提交脚本或选择任务后，输出会显示在这里。";
@@ -1265,6 +1382,7 @@ async function boot() {
     await enter();
   } catch (e) {
     if (e.status !== 401) throw e;
+    if (S.config.password_auth) location.replace("/login");
   }
 }
 

@@ -42,6 +42,17 @@ def test_same_request_id_is_idempotent(store):
     assert len(store.list_jobs("alice")) == 1
 
 
+def test_legacy_jobs_stay_readable_and_idempotent_after_migration(store):
+    j = submit(store, "alice", "old-request")
+    with store.connect(True) as c:
+        c.execute("ALTER TABLE jobs DROP COLUMN rerun_of")
+    reopened = Store(store.path)
+    assert reopened.get_job(j["id"], "alice", include_metrics=True) == {
+        **j, "duration_seconds": None, "queue_position": 1}
+    previous = reopened.submit("alice", j["project"], j["snapshot"], j["environment"], j["entry"], j["args"], j["request_id"])
+    assert previous == j
+
+
 def test_starting_and_cancelling_hold_slot(store):
     a = submit(store, "alice", "a")
     submit(store, "bob", "b")

@@ -65,6 +65,7 @@ function initReadingLayout() {
   function focus(on) {
     document.body.classList.toggle("reading-focus", on);
     toggle.setAttribute("aria-pressed", String(on));
+    toggle.setAttribute("aria-label", on ? "退出专注阅读" : "专注阅读");
     toggle.querySelector("span").textContent = on ? "退出专注阅读" : "专注阅读";
     toggle.title = on ? "恢复工作区布局（Esc）" : "使用整个窗口查看此文件";
     if (!on) apply();

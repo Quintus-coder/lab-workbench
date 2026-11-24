@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>实验工作台 · Windows 任务调度</title>
-  <link rel="stylesheet" href="/static/app.css?v=reading3">
-  <script src="/static/reading-layout.js" defer></script>
-  <script src="/static/app.js?v=reading3" defer></script>
+  <link rel="stylesheet" href="/static/app.css?v=codex2">
+  <script src="/static/reading-layout.js?v=codex2" defer></script>
+  <script src="/static/app.js?v=codex2" defer></script>
 </head>
 <body>
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -82,20 +82,25 @@
         <span id="waiting-count" class="count-pill">0</span>
       </button>
 
-      <button id="theme-toggle" type="button" class="quiet theme-toggle" aria-label="切换显示主题">
-        <svg class="icon" aria-hidden="true"><use id="theme-icon" href="#i-monitor"/></svg>
-        <span id="theme-label">自动</span>
-      </button>
-
-      <div class="identity">
-        <span class="who">
+      <details id="user-menu" class="action-menu user-menu">
+        <summary class="user-trigger" aria-label="用户菜单">
           <svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>
           <span id="identity">未登录</span>
           <span id="identity-role" class="role-badge" hidden>管理员</span>
-        </span>
-        <button id="members-toggle" type="button" class="quiet" hidden>成员管理</button>
-        <button id="logout" type="button" class="quiet" hidden>退出</button>
-      </div>
+          <svg class="icon user-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </summary>
+        <div class="action-popover align-right">
+          <button id="members-toggle" type="button" class="quiet" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>
+            <span>成员管理</span>
+          </button>
+          <button id="theme-toggle" type="button" class="quiet theme-toggle" aria-label="切换显示主题">
+            <svg class="icon" aria-hidden="true"><use id="theme-icon" href="#i-monitor"/></svg>
+            <span id="theme-label">自动</span>
+          </button>
+          <button id="logout" type="button" class="quiet danger" hidden>退出</button>
+        </div>
+      </details>
     </div>
   </header>
 
@@ -174,14 +179,7 @@
         </div>
 
         <form id="login-form">
-          <div class="login-select-row">
-            <label for="login-member">身份标识</label>
-            <select id="login-member">
-              <option value="alice">组员甲 (alice)</option>
-              <option value="bob">组员乙 (bob)</option>
-              <option value="admin">试用管理员 (admin)</option>
-            </select>
-          </div>
+          <input type="hidden" id="login-member" value="alice">
           <button type="submit" class="primary login-submit">
             <span>进入工作台</span>
             <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
@@ -238,6 +236,7 @@
         <div id="drop-zone" class="drop-zone" role="region" aria-label="项目文件与拖拽上传区">
           <div id="files" class="file-tree"></div>
           <p class="drop-hint">拖入文件或文件夹即可上传</p>
+          <div class="drop-overlay" aria-hidden="true">松开鼠标即可上传文件或文件夹</div>
         </div>
 
         <section id="transfers-section" class="transfers" aria-label="文件传输" hidden>
@@ -275,7 +274,7 @@
                 <a id="pdf-popout" class="document-link" target="_blank" rel="noopener" hidden>新标签页阅读 ↗</a>
                 <a id="document-download" class="document-link">下载原文件</a>
               </div>
-              <button id="reading-mode" class="quiet" type="button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg><span>专注阅读</span></button>
+              <button id="reading-mode" class="quiet" type="button" aria-pressed="false" aria-label="专注阅读"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg><span>专注阅读</span></button>
               <label class="environment-control" for="environment">
                 <span class="sr-only">Python 环境</span>
                 <select id="environment" aria-label="Python 环境" required></select>
@@ -297,7 +296,7 @@
                   <button id="editor-delete" type="button" class="danger" disabled>删除文件…</button>
                 </div>
               </details>
-              <button id="editor-submit" type="button" class="primary" disabled>
+              <button id="editor-submit" type="button" class="primary" title="保存并提交 (Ctrl+Enter)" disabled>
                 <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
                 <span>保存并提交</span>
               </button>
@@ -348,23 +347,25 @@
 
           <div id="console-body" class="console-body">
             <div id="console-output" role="tabpanel" aria-labelledby="console-output-tab">
-              <div class="console-heading">
+              <div id="console-empty" class="console-empty">
+                <p class="muted">提交脚本或从队列中选择任务，即可查看输出日志与结果文件。</p>
+                <button type="button" id="console-open-queue" class="quiet">查看队列</button>
+              </div>
+              <div class="console-heading" hidden>
                 <strong id="job-title">当前未选择任务</strong>
                 <span id="job-dialog-status" class="status" hidden></span>
                 <button type="button" id="cancel-job" class="quiet danger" hidden>取消任务</button>
                 <div class="row-actions">
-                  <button type="button" id="copy-log" class="quiet icon-only" aria-label="复制日志" title="复制日志">
+                  <button type="button" id="copy-log" class="quiet icon-only" aria-label="复制日志" title="复制日志" hidden>
                     <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>
                   </button>
-                  <button type="button" id="clear-console" class="quiet icon-only" aria-label="清除显示" title="清除显示">
-                    <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
-                  </button>
+                  <button type="button" id="clear-console" class="quiet" aria-label="清除显示" title="清屏" hidden>清屏</button>
                 </div>
               </div>
-              <p id="job-detail" class="muted">提交脚本或选择右侧任务后，输出日志与结果入口会显示在这里。</p>
-              <pre id="job-log" tabindex="0" aria-label="任务标准输出和错误输出">尚未选择任务。</pre>
-              <p id="log-note" class="muted"></p>
-              <details id="job-results">
+              <p id="job-detail" class="muted" hidden>提交脚本或选择右侧任务后，输出日志与结果入口会显示在这里。</p>
+              <pre id="job-log" tabindex="0" aria-label="任务标准输出和错误输出" hidden>尚未选择任务。</pre>
+              <p id="log-note" class="muted" hidden></p>
+              <details id="job-results" hidden>
                 <summary>结果文件 <span id="output-count" class="muted"></span></summary>
                 <div id="job-outputs"></div>
               </details>
@@ -411,9 +412,6 @@
             <h1>任务记录</h1>
             <p class="muted">查看排队状态、快照日志与计算结果归档</p>
           </div>
-          <button type="button" class="quiet" data-view="workspace">
-            <span>返回工作台</span>
-          </button>
         </div>
 
         <div class="history-metrics" aria-label="任务统计">
@@ -441,6 +439,10 @@
             <button type="button" class="filter-chip" data-filter="active" aria-pressed="false">等待 / 运行</button>
             <button type="button" class="filter-chip" data-filter="done" aria-pressed="false">已结束</button>
           </div>
+          <label class="search-box history-search">
+            <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="job-search" type="search" placeholder="筛选脚本或项目…" aria-label="按脚本名或项目名筛选任务">
+          </label>
           <label id="admin-filter" class="check-label" hidden>
             <input type="checkbox" id="all-jobs">
             <span>查看所有成员任务</span>
@@ -451,8 +453,8 @@
           <table>
             <thead>
               <tr>
-                <th>任务</th>
-                <th>项目 / 脚本</th>
+                <th>脚本</th>
+                <th>项目</th>
                 <th>状态</th>
                 <th>提交时间</th>
                 <th>操作</th>
@@ -480,11 +482,11 @@
   <dialog id="members-dialog" aria-labelledby="members-title">
     <div class="panel-title"><h2 id="members-title">成员管理</h2><button type="button" class="quiet close-dialog">关闭</button></div>
     <form id="invite-form" class="account-fields">
-      <label for="invite-email">按邮箱邀请组员</label>
+      <label for="invite-email">{{ '批准注册邮箱' if password_auth else '按邮箱邀请组员' }}</label>
       <input type="email" id="invite-email" maxlength="254" required placeholder="填写完整学校邮箱">
-      <button type="submit" class="primary">加入邀请名单</button>
+      <button type="submit" class="primary">{{ '允许注册' if password_auth else '加入邀请名单' }}</button>
     </form>
-    <p class="muted">邀请后请把工作台网址发给组员，并确认 Access 策略允许该邮箱登录。</p>
+    <p class="muted">{% if password_auth %}获准邮箱可从登录页注册。未注册成员停用后不能注册，恢复后重新允许注册。{% else %}邀请后请把工作台网址发给组员，并确认 Access 策略允许该邮箱登录。{% endif %}</p>
     <p id="members-status" role="status" aria-live="polite"></p>
     <ul id="member-list"></ul>
   </dialog>

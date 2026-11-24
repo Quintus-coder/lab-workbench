@@ -355,3 +355,189 @@ def test_existing_member_survives_upgrade_and_concurrent_activation(tmp_path):
     store.configure_members("production", "another@school.example")
     with pytest.raises(Forbidden):
         store.member_by_email("another@school.example")
+
+
+def password_client(tmp_path, production=False):
+    from group_compute.store import Store
+    store = Store(tmp_path / "state.sqlite")
+    mode = "production" if production else "development"
+    base = "https://work.example.org" if production else "http://127.0.0.1:8765"
+    store.configure_members(mode, password_auth=True)
+    store.approve_registration("lead@school.example")
+    config = AppConfig(tmp_path, mode=mode, base_url=base, password_auth=True,
+                       access_issuer="https://team.cloudflareaccess.com", access_audience="app")
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048) if production else None
+    verifier = AccessAuthenticator(config.access_issuer, "app", lambda _: key.public_key()) if production else None
+    app = create_app(config, authenticator=verifier)
+    c = TestClient(app, base_url=base, client=("127.0.0.1", 12345))
+    c.headers.update({"Origin": base, "X-Requested-With": "GroupCompute"})
+    credentials = dict(email="lead@school.example", password="long test password for admin")
+    if production:
+        c.headers["cf-access-jwt-assertion"] = jwt.encode(dict(iss=config.access_issuer, aud="app",
+            iat=int(time.time()), exp=int(time.time())+300, sub="lead", email=credentials["email"]), key, algorithm="RS256")
+    response = c.post("/api/auth/register", json=credentials)
+    assert response.status_code == 200, response.text
+    assert response.json()["redirect"] == "/login?registered=1"
+    c.headers.pop("cf-access-jwt-assertion", None)
+    assert c.get("/api/me").status_code == 401
+    assert c.post("/api/auth/login", json=credentials).status_code == 200
+    return c, store, credentials
+
+
+def test_approved_email_registration_login_and_member_isolation(tmp_path):
+    from group_compute.auth import token_digest
+    c, store, admin_credentials = password_client(tmp_path)
+    payload = dict(email="student@school.example", password="a long student password")
+    with c:
+        assert c.post("/api/dev/login", json={"member_id": "admin"}).status_code == 404
+        assert "注册账号" in c.get("/login").text
+        assert "邀请码" not in c.get("/register").text
+        assert c.get("/api/me").json()["admin"]
+        admin_project = project(c)
+        assert c.post("/api/auth/register", json=payload).status_code == 403
+        approved = c.post("/api/members", json={"email":payload["email"]}).json()
+        mid = approved["id"]
+        assert approved["status"] == "pending"
+        assert "invite_url" not in approved
+        assert c.post("/api/members", json={"email":payload["email"]}).json()["id"] == mid
+        c.post(f"/api/members/{mid}/enabled", json={"enabled":False})
+        assert c.post("/api/auth/register", json=payload).status_code == 403
+        c.post(f"/api/members/{mid}/enabled", json={"enabled":True})
+        c.post("/api/logout")
+        assert c.post("/api/auth/register", json={**payload,"password":"short"}).status_code == 422
+        assert c.post("/api/auth/register", json={**payload,"admin":True}).status_code == 422
+        assert c.post("/api/auth/register", json=payload, headers={"Origin":"https://evil.example"}).status_code == 403
+        response = c.post("/api/auth/register", json=payload)
+        assert response.status_code == 200
+        assert response.json()["redirect"] == "/login?registered=1"
+        assert c.get("/api/me").status_code == 401
+        assert not c.cookies.get("gc_session")
+        assert c.post("/api/auth/register", json={**payload,"password":"another long password"}).status_code == 409
+        assert c.post("/api/auth/login", json={**payload,"password":"incorrect password"}).status_code == 401
+        assert c.post("/api/auth/login", json={**payload,"email":"nobody@school.example"}).status_code == 401
+        response = c.post("/api/auth/login", json={**payload,"remember":True})
+        assert response.status_code == 200
+        assert "Max-Age=2592000" in response.headers["set-cookie"]
+        assert "HttpOnly" in response.headers["set-cookie"] and "SameSite=strict" in response.headers["set-cookie"]
+        assert c.get("/api/me").json()["admin"] == 0
+        assert c.get("/api/projects/"+admin_project+"/files").status_code == 403
+        assert c.post("/api/members", json={"email":"other@school.example"}).status_code == 403
+        sid = c.cookies.get("gc_session")
+        with store.connect() as db:
+            assert db.execute("SELECT 1 FROM sessions WHERE token=?", (sid,)).fetchone() is None
+            assert db.execute("SELECT 1 FROM sessions WHERE token=?", ("password:"+token_digest(sid),)).fetchone()
+            encoded = db.execute("SELECT password_hash FROM members WHERE id=?", (mid,)).fetchone()[0]
+            assert encoded.startswith("scrypt$") and payload["password"] not in encoded
+        student_project = project(c)
+        c.post("/api/logout")
+        assert c.get("/api/me", headers={"Cookie":"gc_session="+sid}).status_code == 401
+        assert c.post("/api/auth/login", json=payload).status_code == 200
+        assert c.get("/api/projects").json()[0]["id"] == student_project
+        sid = c.cookies.get("gc_session")
+        # A separate admin session must invalidate the student's still-active session.
+        with TestClient(c.app, base_url="http://127.0.0.1:8765", client=("127.0.0.1",12345)) as admin:
+            admin.headers.update(c.headers)
+            assert admin.post("/api/auth/login", json=admin_credentials).status_code == 200
+            assert admin.post(f"/api/members/{mid}/enabled", json={"enabled":False}).status_code == 200
+            assert c.get("/api/me").status_code == 401
+            assert c.post("/api/auth/login", json=payload).status_code == 401
+            admin.post(f"/api/members/{mid}/enabled", json={"enabled":True})
+            assert c.get("/api/me", headers={"Cookie":"gc_session="+sid}).status_code == 401
+
+
+def test_password_session_expiry_rate_limit_and_production_cookie(tmp_path):
+    from group_compute.auth import token_digest
+    c, store, payload = password_client(tmp_path, production=True)
+    with c:
+        response = c.post("/api/auth/login", json=payload)
+        assert "Secure" in response.headers["set-cookie"]
+        token = c.cookies.get("gc_session")
+        with store.connect(True) as db:
+            db.execute("UPDATE sessions SET expires=0")
+        assert c.get("/api/me").status_code == 401
+        assert c.post("/api/auth/login", json=payload).status_code == 200
+        current = c.cookies.get("gc_session")
+        assert current != token
+        assert c.post("/api/logout").json()["redirect"] == "/login"
+        assert c.get("/api/me", headers={"Cookie":"gc_session="+current}).status_code == 401
+        with store.connect(True) as db:
+            db.execute("INSERT INTO auth_attempts VALUES(?,10,?)", (token_digest(payload["email"]), time.time()+300))
+        create_app(c.app.state.config)
+        assert c.post("/api/auth/login", json=payload).status_code == 429
+        with store.connect(True) as db:
+            db.execute("UPDATE auth_attempts SET expires=0")
+        assert c.post("/api/auth/login", json=payload).status_code == 200
+
+
+def test_cloudflare_registration_then_password_login(tmp_path):
+    from group_compute.store import Store
+    base, issuer = "https://work.example.org", "https://team.cloudflareaccess.com"
+    with pytest.raises(ValueError, match="Access"):
+        create_app(AppConfig(tmp_path, mode="production", base_url=base, password_auth=True))
+    store = Store(tmp_path / "state.sqlite")
+    store.configure_members("production", "lead@school.example")
+    admin = store.member_by_email("lead@school.example")
+    student = "student@school.example"
+    mid = store.approve_registration(student, actor=admin["id"])["id"]
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    verifier = AccessAuthenticator(issuer, "app", lambda _: key.public_key())
+    config = AppConfig(tmp_path, mode="production", base_url=base, password_auth=True,
+                       access_issuer=issuer, access_audience="app")
+    def proof(email, **changes):
+        claims = dict(iss=issuer, aud="app", iat=int(time.time()), exp=int(time.time())+300, sub=email, email=email)
+        return {"cf-access-jwt-assertion": jwt.encode({**claims, **changes}, key, algorithm="RS256")}
+    payload = dict(email=student, password="long student test password")
+    with TestClient(create_app(config, authenticator=verifier), base_url=base) as c:
+        c.headers.update({"Origin":base, "X-Requested-With":"GroupCompute"})
+        assert c.get("/login").status_code == 200
+        assert c.get("/register").status_code == 401
+        for headers in [{}, {"Cf-Access-Authenticated-User-Email":student},
+                        {"cf-access-jwt-assertion":"forged"}, proof(student, exp=1), proof(student, aud="other")]:
+            for path in ["/register", "/api/auth/register"]:
+                assert c.post(path, json=payload, headers=headers).status_code == 401
+        assert c.post("/register", json=payload, headers=proof(admin["email"])).status_code == 403
+        assert c.get("/register", headers=proof("outsider@school.example")).status_code == 403
+        assert c.post("/register", json={**payload,"email":"outsider@school.example"},
+                      headers=proof("outsider@school.example")).status_code == 403
+        page = c.get("/register", headers=proof(student))
+        assert page.status_code == 200 and 'readonly' in page.text and student in page.text
+        store.manage_members(admin["id"], target=mid, enabled=False)
+        assert c.get("/register", headers=proof(student)).status_code == 403
+        assert c.post("/register", json=payload, headers=proof(student)).status_code == 403
+        store.manage_members(admin["id"], target=mid, enabled=True)
+        response = c.post("/register", json=payload, headers=proof(student.upper()))
+        assert response.status_code == 200 and response.json()["redirect"] == "/login?registered=1"
+        assert c.get("/api/me").status_code == 401
+        assert c.get("/register", headers=proof(student)).status_code == 409
+        assert c.post("/register", json=payload, headers=proof(student)).status_code == 409
+        assert c.post("/api/auth/login", json=payload).status_code == 200
+        assert c.get("/api/me").json()["id"] == mid
+        assert c.post("/api/logout").json()["redirect"] == "/login"
+        assert c.get("/api/me").status_code == 401
+
+
+def test_password_upgrade_preserves_accounts_and_prevents_concurrent_overwrite(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from group_compute.store import Store, Conflict
+    store = Store(tmp_path / "state.sqlite")
+    store.configure_members("production", "lead@school.example")
+    admin = store.member_by_email("lead@school.example")
+    pid = store.create_project(admin["id"], "原项目")["id"]
+    store.configure_members("production", password_auth=True)
+    store.approve_registration(admin["email"])
+    def register(_):
+        try:
+            return store.register_password(admin["email"], "long enough upgrade password")
+        except Conflict:
+            return "registered"
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(register, range(2)))
+    assert sorted(results) == sorted([admin["id"], "registered"])
+    assert store.member(admin["id"])["name"] == admin["name"]
+    assert store.list_projects(admin["id"])[0]["id"] == pid
+    with pytest.raises(Conflict):
+        store.approve_registration("other-admin@school.example")
+    demo = Store(tmp_path / "demo" / "state.sqlite")
+    demo.configure_members("development")
+    with pytest.raises(ValueError, match="独立"):
+        demo.configure_members("development", password_auth=True)

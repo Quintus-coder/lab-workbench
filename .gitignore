@@ -23,6 +23,9 @@
 !/src/group_compute/templates/index.html
 !/src/group_compute/templates/activate.html
 !/src/group_compute/static/activate.js
+!/src/group_compute/templates/account.html
+!/src/group_compute/static/account.js
+!/src/group_compute/static/ripples.js
 !/src/group_compute/templates/office.html
 !/tests/test_auth_api.py
 !/tests/test_paths.py
