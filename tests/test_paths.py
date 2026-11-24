@@ -1,9 +1,9 @@
 """Real files, restarts and links test transfer contracts without file hashes."""
 import os
 import pytest
-from group_compute.store import Store, Conflict, Forbidden
-from group_compute.config import Limits
-from group_compute.paths import Workspace, InvalidPath, StorageFull
+from lab_workbench.store import Store, Conflict, Forbidden
+from lab_workbench.config import Limits
+from lab_workbench.paths import Workspace, InvalidPath, StorageFull
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def test_text_editor_preserves_bom_and_crlf(workspace):
 
 
 def test_text_editor_rejects_binary_large_and_other_members(workspace):
-    from group_compute.paths import UnsupportedText
+    from lab_workbench.paths import UnsupportedText
     w, _, p = workspace
     upload(w, p, "binary.dat", b"\x00data")
     with pytest.raises(UnsupportedText):

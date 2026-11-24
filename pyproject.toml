@@ -3,22 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "group-compute"
+name = "lab-workbench"
 version = "0.2.0"
 description = "Small Windows research group job queue and file portal"
 requires-python = ">=3.10"
 dependencies = ["fastapi>=0.115,<1", "pydantic>=2.6,<3", "uvicorn>=0.30,<1", "jinja2>=3.1,<4", "PyJWT[crypto]>=2.9,<3"]
+
+[project.scripts]
+lab-workbench = "lab_workbench.__main__:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10", "httpx>=0.27,<1"]
 windows = ["pywin32>=306; sys_platform == 'win32'"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["lab_workbench*"]
 
 [tool.setuptools.package-data]
-group_compute = ["templates/*.html", "static/*.js", "static/*.css"]
+lab_workbench = ["web/templates/*.html", "web/static/css/*.css", "web/static/js/*.js"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["."]
 testpaths = ["tests"]

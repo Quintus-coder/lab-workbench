@@ -224,9 +224,9 @@ def create_app(config: AppConfig, store=None, workspace=None, authenticator=None
             raise Forbidden("账号已停用或尚未完成注册")
         return m
 
-    package = Path(__file__).parent
-    templates = Environment(loader=FileSystemLoader(package / "templates"), autoescape=select_autoescape())
-    app.mount("/static", StaticFiles(directory=package / "static", check_dir=False), name="static")
+    web_root = Path(__file__).parent / "web"
+    templates = Environment(loader=FileSystemLoader(web_root / "templates"), autoescape=select_autoescape())
+    app.mount("/static", StaticFiles(directory=web_root / "static", check_dir=False), name="static")
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):

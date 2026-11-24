@@ -1,7 +1,7 @@
 """Persistent real SQLite tests: capacity, fairness and ownership are server rules."""
 from concurrent.futures import ThreadPoolExecutor
 import pytest
-from group_compute.store import Store, Conflict, Forbidden
+from lab_workbench.store import Store, Conflict, Forbidden
 
 
 @pytest.fixture

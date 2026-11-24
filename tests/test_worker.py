@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import pytest
-from group_compute.store import Store
-from group_compute.worker import Worker, Observation
+from lab_workbench.store import Store
+from lab_workbench.worker import Worker, Observation
 
 
 class ControlledRunner:

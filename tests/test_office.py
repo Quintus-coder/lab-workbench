@@ -7,10 +7,10 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from group_compute.api import create_app
-from group_compute.config import AppConfig, Limits
-from group_compute.office import NoRedirect
-from group_compute.store import Conflict
+from lab_workbench.api import create_app
+from lab_workbench.config import AppConfig, Limits
+from lab_workbench.office import NoRedirect
+from lab_workbench.store import Conflict
 
 
 SECRET = "test-only-office-shared-secret-32-characters"

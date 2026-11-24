@@ -4,9 +4,9 @@ import pytest
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from group_compute.auth import AccessAuthenticator, AuthenticationError
-from group_compute.config import AppConfig, Limits
-from group_compute.api import create_app
+from lab_workbench.auth import AccessAuthenticator, AuthenticationError
+from lab_workbench.config import AppConfig, Limits
+from lab_workbench.api import create_app
 
 
 @pytest.fixture
@@ -337,7 +337,7 @@ def test_production_refuses_preview_database(tmp_path):
 def test_existing_member_survives_upgrade_and_concurrent_activation(tmp_path):
     import sqlite3
     from concurrent.futures import ThreadPoolExecutor
-    from group_compute.store import Store, Forbidden
+    from lab_workbench.store import Store, Forbidden
     with sqlite3.connect(tmp_path / "state.sqlite") as db:
         db.execute("CREATE TABLE members(id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, admin INTEGER NOT NULL DEFAULT 0, last_served INTEGER NOT NULL DEFAULT 0)")
         db.execute("INSERT INTO members VALUES('original','lead@school.example','原管理员',1,23)")
@@ -358,7 +358,7 @@ def test_existing_member_survives_upgrade_and_concurrent_activation(tmp_path):
 
 
 def password_client(tmp_path, production=False):
-    from group_compute.store import Store
+    from lab_workbench.store import Store
     store = Store(tmp_path / "state.sqlite")
     mode = "production" if production else "development"
     base = "https://work.example.org" if production else "http://127.0.0.1:8765"
@@ -385,7 +385,7 @@ def password_client(tmp_path, production=False):
 
 
 def test_approved_email_registration_login_and_member_isolation(tmp_path):
-    from group_compute.auth import token_digest
+    from lab_workbench.auth import token_digest
     c, store, admin_credentials = password_client(tmp_path)
     payload = dict(email="student@school.example", password="a long student password")
     with c:
@@ -446,7 +446,7 @@ def test_approved_email_registration_login_and_member_isolation(tmp_path):
 
 
 def test_password_session_expiry_rate_limit_and_production_cookie(tmp_path):
-    from group_compute.auth import token_digest
+    from lab_workbench.auth import token_digest
     c, store, payload = password_client(tmp_path, production=True)
     with c:
         response = c.post("/api/auth/login", json=payload)
@@ -470,7 +470,7 @@ def test_password_session_expiry_rate_limit_and_production_cookie(tmp_path):
 
 
 def test_cloudflare_registration_then_password_login(tmp_path):
-    from group_compute.store import Store
+    from lab_workbench.store import Store
     base, issuer = "https://work.example.org", "https://team.cloudflareaccess.com"
     with pytest.raises(ValueError, match="Access"):
         create_app(AppConfig(tmp_path, mode="production", base_url=base, password_auth=True))
@@ -518,7 +518,7 @@ def test_cloudflare_registration_then_password_login(tmp_path):
 
 def test_password_upgrade_preserves_accounts_and_prevents_concurrent_overwrite(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
-    from group_compute.store import Store, Conflict
+    from lab_workbench.store import Store, Conflict
     store = Store(tmp_path / "state.sqlite")
     store.configure_members("production", "lead@school.example")
     admin = store.member_by_email("lead@school.example")

@@ -7,8 +7,10 @@
 在仓库根目录打开 PowerShell，使用 Python 3.10 或更新版本：
 
 ```powershell
+python main.py
+# 或安装后使用模块/命令启动：
 python -m pip install .
-python -m group_compute
+python -m lab_workbench
 ```
 
 用浏览器打开 `http://127.0.0.1:8765`，选择试用身份并新建项目。按 Ctrl+C 停止。可通过 `--port` 和 `--data-dir` 指定端口和数据目录。此入口仅面向本机试用，不要将试用登录入口公开至局域网或互联网。
@@ -18,8 +20,8 @@ python -m group_compute
 在仓库根目录使用现有 Python 环境。若尚未以开发模式安装，先执行 `python -m pip install -e .`。首次运行先批准管理员邮箱注册（替换示例邮箱）：
 
 ```powershell
-python -m group_compute --password-auth --init-admin lead@school.example
-python -m group_compute --password-auth
+python -m lab_workbench --password-auth --init-admin lead@school.example
+python -m lab_workbench --password-auth
 ```
 
 打开 `http://127.0.0.1:8765`，点击 **注册账号**，填写已批准的邮箱、密码和确认密码。注册成功后返回登录页，再用邮箱和密码登录。密码为 15–128 个字符；登录页可选择记住此设备 30 天，不勾选时为浏览器会话 Cookie，服务端最多保留 12 小时。显示名称默认使用邮箱前缀，已有成员名称保留。
@@ -51,7 +53,7 @@ $env:GC_BASE_URL = 'https://workbench.example.org'
 $env:GC_ACCESS_ISSUER = 'https://your-team.cloudflareaccess.com'
 $env:GC_ACCESS_AUDIENCE = 'your-application-audience'
 $env:GC_BOOTSTRAP_ADMIN_EMAIL = 'lead@school.example'
-python -m group_compute --production --data-dir 'D:\GroupCompute\members-data'
+python -m lab_workbench --production --data-dir 'D:\GroupCompute\members-data'
 ```
 
 3. 管理员访问域名，用学校邮箱收码登录，在右上角用户菜单打开 **成员管理** 按完整邮箱添加邀请，再把工作台网址发给组员。邀请不发送邮件；验证码在对方登录时由 Access 发送。Access 允许登录和工作台名单缺一不可。首次管理员仅用于初始化，之后可从启动环境移除该变量。
@@ -75,4 +77,4 @@ python -m pytest -q
 python -m pip wheel . --no-deps --wheel-dir dist
 ```
 
-仓库名是 `lab-workbench`，Python 模块入口为 `group_compute`。发布 wheel 时只分发应用包；测试保留在源码仓库。仓库采用文件白名单，新增需要版本控制的文件时请同步更新 `.gitignore`。
+仓库名与 Python 包名统一为 `lab-workbench` / `lab_workbench`，根目录提供 `main.py` 直出启动入口，前端页面模板与静态资源集中在 `lab_workbench/web/`（`templates/`、`static/css/`、`static/js/`）。发布 wheel 时只分发应用包；测试保留在 `tests/`；构建产物与本地运行数据由 `.gitignore` 自动忽略。
