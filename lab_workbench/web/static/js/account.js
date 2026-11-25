@@ -104,7 +104,9 @@ accountForm.addEventListener("submit", async event => {
     if (!response.ok) throw new Error(data.error || "操作未完成，请稍后再试。");
     fields.password.value = "";
     if (registering) fields.confirm.value = "";
-    location.replace(registering ? data.redirect : "/");
+    // Keep a shared workbench link (#/p/...) across the sign-in redirect.
+    const destination = location.hash.startsWith("#/") ? "/" + location.hash : "/";
+    location.replace(registering ? data.redirect : destination);
   } catch (error) {
     accountError.textContent = error instanceof TypeError
       ? (registering ? "无法提交。请检查网络；若邮箱验证已过期，请刷新页面重新验证。" : "连接失败，请检查网络或稍后重试。")

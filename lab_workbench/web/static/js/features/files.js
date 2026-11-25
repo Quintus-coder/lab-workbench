@@ -6,6 +6,7 @@ import { S } from "../core/state.js";
 import { ask, guarded, message } from "../core/ui.js";
 import { editorControls, openEditor, renderEditor } from "./editor.js";
 import { renderUsage } from "./projects.js";
+import { syncRoute } from "./router.js";
 import { updateTelemetry } from "./status.js";
 import { renderTransfers } from "./uploads.js";
 
@@ -42,6 +43,7 @@ export async function deleteProjectFile(file) {
     await api(`/api/projects/${projectId}/files`, "DELETE", {path: file.path, version: file.version});
     if (S.editor?.path === file.path) S.editor = null;
     await refreshFiles();
+    syncRoute("replace");
     message("文件已删除；已提交任务的副本保留");
   } finally {
     S.editingBusy = false;
@@ -68,6 +70,7 @@ async function deleteProjectDir(dirPath) {
       if (openPath === dirPath || openPath.startsWith(dirPath + "/")) S.openDirs.delete(openPath);
     }
     await refreshFiles();
+    syncRoute("replace");
     message("文件夹已删除；已提交任务的副本保留");
   } finally {
     S.editingBusy = false;
@@ -228,6 +231,7 @@ export function initFiles() {
       }
       await refreshFiles();
       revealFileInTree(res.path);
+      syncRoute("replace");
       message("文件已重命名 / 移动");
     } catch (err) {
       $("rename-file-error").textContent = err.message;

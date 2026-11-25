@@ -8,6 +8,7 @@ import { initJobs, refreshJobs, refreshRelativeTimes } from "./features/jobs.js"
 import { initLayout } from "./features/layout.js";
 import { initMembers } from "./features/members.js";
 import { initProjects } from "./features/projects.js";
+import { initRouter } from "./features/router.js";
 import { boot, initSession } from "./features/session.js";
 import { refreshSystemStatus } from "./features/status.js";
 import { initUploads } from "./features/uploads.js";
@@ -23,6 +24,7 @@ initFiles();
 initJobs();
 initMembers();
 initProjects();
+initRouter();
 
 guarded(boot)();
 setInterval(() => {

@@ -7,6 +7,7 @@ import { ask, guarded, message } from "../core/ui.js";
 import { deleteProjectFile, refreshFiles, revealFileInTree } from "./files.js";
 import { queueScript } from "./jobs.js";
 import { readingLayout, setConsoleCollapsed, setView } from "./layout.js";
+import { syncRoute } from "./router.js";
 import { updateTelemetry } from "./status.js";
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|webp)$/i;
@@ -177,7 +178,11 @@ export async function openEditor(path, reveal = true) {
   } finally {
     S.editingBusy = false;
     renderEditor();
-    if (loaded && S.editor?.path === path) revealFileInTree(path);
+    if (loaded && S.editor?.path === path) {
+      revealFileInTree(path);
+      // Opening on request is navigation; automatic opens leave the address to their caller.
+      if (reveal) syncRoute();
+    }
   }
 }
 
@@ -186,6 +191,7 @@ async function saveEditor() {
   if (!e) throw new Error("请先打开或新建文件。");
   if (S.editingBusy || S.busy) throw new Error("请等待当前文件操作或上传完成。");
   if (!e.dirty) return;
+  const firstSave = e.version === null;
   S.editingBusy = true;
   renderEditor();
   try {
@@ -194,6 +200,8 @@ async function saveEditor() {
     S.editor = {...saved, text, original:text, dirty:false};
     await refreshFiles();
     revealFileInTree(S.editor.path);
+    // A new file gets its address once it exists on the server.
+    syncRoute(firstSave ? "push" : "replace");
     message("文件已保存");
   } finally {
     S.editingBusy = false;

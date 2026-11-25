@@ -5,7 +5,8 @@ import { S } from "../core/state.js";
 import { ask, guarded, message } from "../core/ui.js";
 import { refreshJobs } from "./jobs.js";
 import { consoleSize, setConsoleSize } from "./layout.js";
-import { renderProjects, selectProject } from "./projects.js";
+import { renderProjects } from "./projects.js";
+import { applyRoute } from "./router.js";
 import { refreshSystemStatus } from "./status.js";
 
 function syncRoleCards(value) {
@@ -32,7 +33,8 @@ async function enter() {
   $("queue-toggle").hidden = false;
   S.projects = await api("/api/projects");
   renderProjects();
-  if (S.projects.length) await selectProject(S.projects[0]);
+  // Open whatever the address points at, falling back to the first project.
+  await applyRoute();
   setConsoleSize(consoleSize);
   await Promise.all([refreshJobs(true), refreshSystemStatus().catch(() => {})]);
 }
@@ -70,7 +72,7 @@ export async function boot() {
   } catch (e) {
     if (S.config.password_auth) {
       if (e.status === 401) {
-        location.replace("/login");
+        location.replace("/login" + location.hash);
         return;
       }
       throw e;
@@ -142,6 +144,8 @@ export function initSession() {
     if (S.editingBusy) throw new Error("文件正在保存或读取，请稍后退出。");
     if (S.editor?.dirty && !await ask("当前文件有未保存修改，放弃修改并退出？")) return;
     const result = await api("/api/logout", "POST", {});
+    // Drop this account's project and file from the address before the next person signs in.
+    history.replaceState(null, "", location.pathname + location.search);
     if (result.redirect) location.replace(result.redirect);
     else location.reload();
   });

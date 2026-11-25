@@ -8,6 +8,7 @@ import { openEditor, renderEditor } from "./editor.js";
 import { refreshFiles, renderFiles } from "./files.js";
 import { refreshJobs, renderJobs } from "./jobs.js";
 import { setView } from "./layout.js";
+import { syncRoute } from "./router.js";
 import { refreshSystemStatus } from "./status.js";
 import { renderTransfers } from "./uploads.js";
 
@@ -64,7 +65,8 @@ export function renderUsage() {
   bar.hidden = false;
 }
 
-export async function selectProject(p) {
+// `file` opens that file instead of the default entry script; `route` is how the address bar records the switch.
+export async function selectProject(p, { file = null, route = "push" } = {}) {
   if (S.busy && S.project?.id !== p.id) throw new Error("请等待本轮上传完成或失败后再切换项目。");
   if (S.editingBusy) throw new Error("文件正在保存或读取，请稍后切换项目。");
   if (S.editor?.dirty && !await ask("当前文件有未保存的修改，放弃修改并切换项目？")) return;
@@ -84,8 +86,11 @@ export async function selectProject(p) {
   setView("workspace");
   $("project-empty").hidden = true;
   await refreshFiles();
-  const initial = S.files.find(f => /(^|\/)run\.ps1$/i.test(f.path)) || S.files.find(f => /\.(ps1|py|md|txt|yaml|json)$/i.test(f.path) && f.size <= S.config.max_text_bytes);
+  const linked = file && S.files.find(f => f.path === file);
+  if (file && !linked) message("链接中的文件不存在，可能已被移动或删除。", true);
+  const initial = linked || S.files.find(f => /(^|\/)run\.ps1$/i.test(f.path)) || S.files.find(f => /\.(ps1|py|md|txt|yaml|json)$/i.test(f.path) && f.size <= S.config.max_text_bytes);
   if (initial) await openEditor(initial.path, false);
+  syncRoute(route);
 }
 
 export function initProjects() {
@@ -152,7 +157,7 @@ export function initProjects() {
     S.usage = null;
     S.files = [];
     if (S.projects.length) {
-      await selectProject(S.projects[0]);
+      await selectProject(S.projects[0], { route: "replace" });
     } else {
       renderEditor();
       renderProjects();
@@ -161,6 +166,7 @@ export function initProjects() {
       $("project-name").textContent = "尚未选择项目";
       $("project-content").hidden = true;
       $("project-empty").hidden = false;
+      syncRoute("replace");
     }
     await Promise.all([refreshJobs(true), refreshSystemStatus().catch(() => {})]);
     message("项目已删除");

@@ -6,6 +6,7 @@ import { S } from "../core/state.js";
 import { ask, copyText, guarded, message } from "../core/ui.js";
 import { editorControls, renderEditor } from "./editor.js";
 import { setQueue, setView, showConsole } from "./layout.js";
+import { syncRoute } from "./router.js";
 import { refreshSystemStatus, updateTelemetry } from "./status.js";
 
 export function renderJobs() {
@@ -177,7 +178,7 @@ function syncConsoleEmptyState() {
   }
 }
 
-async function openJob(id) {
+export async function openJob(id) {
   S.detail = id;
   S.detailJob = null;
   S.offset = 0;
@@ -188,7 +189,25 @@ async function openJob(id) {
   showConsole("output");
   $("job-dialog").scrollIntoView({block: "nearest"});
   renderJobs();
+  syncRoute();
   await refreshDetail();
+}
+
+export function closeJob() {
+  S.detail = null;
+  S.detailJob = null;
+  S.log = "";
+  S.offset = 0;
+  syncConsoleEmptyState();
+  $("job-title").textContent = "当前未选择任务";
+  $("job-log").textContent = "尚未选择任务。";
+  $("job-detail").textContent = "提交脚本或选择任务后，输出会显示在这里。";
+  $("job-dialog-status").hidden = true;
+  $("cancel-job").hidden = true;
+  $("job-outputs").replaceChildren();
+  $("log-note").textContent = "";
+  $("output-count").textContent = "";
+  renderJobs();
 }
 
 async function openSnapshotDialog(jid) {
@@ -374,19 +393,7 @@ export function initJobs() {
   });
 
   $("clear-console").onclick = () => {
-    S.detail = null;
-    S.detailJob = null;
-    S.log = "";
-    S.offset = 0;
-    syncConsoleEmptyState();
-    $("job-title").textContent = "当前未选择任务";
-    $("job-log").textContent = "尚未选择任务。";
-    $("job-detail").textContent = "提交脚本或选择任务后，输出会显示在这里。";
-    $("job-dialog-status").hidden = true;
-    $("cancel-job").hidden = true;
-    $("job-outputs").replaceChildren();
-    $("log-note").textContent = "";
-    $("output-count").textContent = "";
-    renderJobs();
+    closeJob();
+    syncRoute("replace");
   };
 }

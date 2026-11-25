@@ -2,6 +2,7 @@
 import { $ } from "../core/dom.js";
 import { S } from "../core/state.js";
 import { initReadingLayout } from "./reading-layout.js";
+import { syncRoute } from "./router.js";
 
 export let readingLayout;
 
@@ -101,8 +102,8 @@ export function initLayout() {
     }
   });
 
-  document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
-  $("queue-toggle").onclick = () => setQueue(S.view === "history" || !S.queueOpen);
+  document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => {setView(b.dataset.view); syncRoute();});
+  $("queue-toggle").onclick = () => {setQueue(S.view === "history" || !S.queueOpen); syncRoute();};
   $("queue-close").onclick = () => {setQueue(false); $("queue-toggle").focus();};
 
   $("console-output-tab").onclick = () => showConsole("output");
