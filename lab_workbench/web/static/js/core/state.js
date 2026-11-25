@@ -1,0 +1,32 @@
+// Shared page state.
+
+export const S = {
+  me: null,
+  config: null,
+  projects: [],
+  project: null,
+  usage: null,
+  systemStatus: null,
+  files: [],
+  jobs: [],
+  transfers: [],
+  selected: [],
+  resumeTarget: null,
+  busy: false,
+  detail: null,
+  detailJob: null,
+  offset: 0,
+  log: "",
+  pendingSubmit: null,
+  pendingReruns: {},
+  renamingFile: null,
+  editor: null,
+  editingBusy: false,
+  submitting: false,
+  fileFilter: "",
+  jobFilter: "all",
+  jobSearch: "",
+  view: "workspace",
+  queueOpen: false,
+  openDirs: new Set()
+};

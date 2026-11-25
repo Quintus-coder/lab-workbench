@@ -1,0 +1,477 @@
+/* Account, Login & Activation Cards + Restrained Dark-Tech Silk Stage */
+body.account-page {
+  color-scheme: dark;
+  --chassis: #060911;
+  --paper: #0d121d;
+  --ink-primary: #eceef4;
+  --ink-secondary: #b6c0d0;
+  --ink-tertiary: #7f8b9e;
+  --ink-muted: #525d6f;
+  --hairline: rgba(226, 232, 240, 0.085);
+  --hairline-strong: rgba(226, 232, 240, 0.17);
+  --hover-wash: rgba(226, 232, 240, 0.065);
+  --signal: #5ea3db;
+  --signal-hover: #82b8e6;
+  --signal-wash: rgba(94, 163, 219, 0.13);
+  --focus-ring: rgba(94, 163, 219, 0.22);
+  --jade: #34d399;
+  --jade-wash: rgba(52, 211, 153, 0.12);
+  --crimson: #f87171;
+  --crimson-wash: rgba(248, 113, 113, 0.12);
+  --codex-card-bg: rgba(11, 15, 25, 0.68);
+  --codex-card-border: rgba(226, 232, 240, 0.11);
+  --codex-card-shadow:
+    0 32px 80px -16px rgba(0, 0, 0, 0.78),
+    0 10px 28px -8px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --codex-input-bg: rgba(6, 9, 16, 0.58);
+  --codex-input-focus-bg: rgba(8, 12, 22, 0.88);
+  --codex-input-border: rgba(226, 232, 240, 0.12);
+  --codex-btn-bg: #e6ebf2;
+  --codex-btn-hover: #f4f7fb;
+  --codex-btn-fg: #090d15;
+  --codex-pill-bg: rgba(12, 17, 28, 0.62);
+}
+
+:root[data-theme="light"] body.account-page {
+  color-scheme: light;
+  --chassis: #d6dfe9;
+  --paper: #f1f5f9;
+  --ink-primary: #0f172a;
+  --ink-secondary: #334155;
+  --ink-tertiary: #59677a;
+  --ink-muted: #8492a6;
+  --hairline: rgba(15, 23, 42, 0.08);
+  --hairline-strong: rgba(15, 23, 42, 0.15);
+  --hover-wash: rgba(15, 23, 42, 0.05);
+  --signal: #1d5d96;
+  --signal-hover: #154978;
+  --signal-wash: rgba(29, 93, 150, 0.10);
+  --focus-ring: rgba(29, 93, 150, 0.18);
+  --jade: #059669;
+  --jade-wash: rgba(5, 150, 105, 0.10);
+  --crimson: #dc2626;
+  --crimson-wash: rgba(220, 38, 38, 0.10);
+  --codex-card-bg: rgba(244, 247, 251, 0.72);
+  --codex-card-border: rgba(255, 255, 255, 0.68);
+  --codex-card-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.07),
+    0 26px 64px -16px rgba(15, 23, 42, 0.16),
+    0 8px 20px -8px rgba(15, 23, 42, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --codex-input-bg: rgba(255, 255, 255, 0.68);
+  --codex-input-focus-bg: rgba(255, 255, 255, 0.92);
+  --codex-input-border: rgba(15, 23, 42, 0.12);
+  --codex-btn-bg: #111827;
+  --codex-btn-hover: #1e293b;
+  --codex-btn-fg: #f8fafc;
+  --codex-pill-bg: rgba(244, 247, 251, 0.68);
+}
+
+.ripple-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.account-page {
+  position: relative;
+  height: auto;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background-color: var(--chassis);
+  background-image:
+    radial-gradient(760px 460px at 72% 22%, rgba(30, 58, 98, 0.16), transparent 65%),
+    radial-gradient(680px 460px at 24% 80%, rgba(20, 36, 68, 0.14), transparent 65%);
+}
+
+.account-topbar {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+}
+
+.account-theme-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--codex-card-border);
+  background: var(--codex-pill-bg);
+  backdrop-filter: saturate(190%) blur(20px);
+  -webkit-backdrop-filter: saturate(190%) blur(20px);
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px -6px rgba(0, 0, 0, 0.14);
+}
+
+.account-theme-pill:hover:not(:disabled) {
+  background: var(--codex-card-bg);
+  border-color: var(--codex-card-border);
+  color: var(--ink-primary);
+}
+
+.account-stage {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 48px 20px;
+}
+
+body:not(.account-page) .account-stage {
+  background-image:
+    radial-gradient(640px 440px at 78% 18%, color-mix(in srgb, var(--signal) 9%, transparent), transparent 65%),
+    radial-gradient(var(--hairline-strong) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+}
+
+.account-card {
+  width: min(100%, 448px);
+  padding: 32px;
+  background: var(--paper);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--float-shadow), inset 0 1px 0 var(--card-highlight);
+  overflow-wrap: anywhere;
+  animation: rise-in 320ms var(--ease-out);
+}
+
+.account-card h1 {
+  font-size: 1.55rem;
+  margin-block: 16px;
+}
+
+.account-card a {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--signal);
+}
+
+.account-fields {
+  display: grid;
+  gap: 10px;
+  margin-block: 16px;
+}
+
+.account-fields button {
+  justify-self: start;
+}
+
+#activate-error {
+  color: var(--crimson);
+}
+
+#member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#member-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-block: 11px;
+  border-top: 1px solid var(--hairline);
+}
+
+#member-list li div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#member-list small {
+  display: block;
+}
+
+#members-dialog {
+  max-height: 85dvh;
+  overflow-y: auto;
+}
+
+/* Minimal Crystal Glass Card (/login & /register) */
+.password-card {
+  width: min(100%, 404px);
+  padding: clamp(28px, 4vw, 36px);
+  background: var(--codex-card-bg);
+  backdrop-filter: saturate(210%) blur(32px);
+  -webkit-backdrop-filter: saturate(210%) blur(32px);
+  border: 1px solid var(--codex-card-border);
+  border-radius: 20px;
+  box-shadow: var(--codex-card-shadow);
+}
+
+.account-brand-minimal {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  letter-spacing: -0.01em;
+}
+
+.account-brand-minimal .brand-glyph {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--codex-btn-bg);
+  color: var(--codex-btn-fg);
+  border: 0;
+  box-shadow: none;
+}
+
+.account-brand-minimal .brand-glyph .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.password-card h1 {
+  margin: 18px 0 0;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.24;
+  letter-spacing: -0.028em;
+  color: var(--ink-primary);
+}
+
+.account-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.password-card .account-fields {
+  margin: 22px 0 0;
+  gap: 14px;
+}
+
+.field-group {
+  display: grid;
+  gap: 6px;
+}
+
+.field-group > label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.password-card input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 13px;
+  font-size: 13.5px;
+  border-radius: 10px;
+  border: 1px solid var(--codex-input-border);
+  background: var(--codex-input-bg);
+  transition:
+    background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out);
+}
+
+.password-card input:not([type="checkbox"]):hover:not(:disabled):not([readonly]) {
+  border-color: var(--hairline-strong);
+}
+
+.password-card input:not([type="checkbox"]):focus-visible {
+  background: var(--codex-input-focus-bg);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.password-card input[readonly] {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  opacity: 0.88;
+  cursor: default;
+}
+
+/* Integrated Password Input + Visibility Toggle */
+.password-control {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--codex-input-border);
+  background: var(--codex-input-bg);
+  transition:
+    background-color 150ms var(--ease-out),
+    border-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out);
+}
+
+.password-control:hover {
+  border-color: var(--hairline-strong);
+}
+
+.password-control:focus-within {
+  background: var(--codex-input-focus-bg);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.password-control input {
+  min-width: 0;
+  flex: 1;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-right: 6px !important;
+}
+
+.password-control .password-toggle {
+  min-height: 32px;
+  margin-right: 5px;
+  padding: 4px 9px;
+  gap: 5px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--ink-tertiary);
+  flex-shrink: 0;
+}
+
+.password-control .password-toggle .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.password-card .remember-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  user-select: none;
+  justify-self: start;
+}
+
+.account-error {
+  color: var(--crimson);
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.account-error:empty {
+  display: none;
+}
+
+.account-error-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  background: var(--crimson-wash);
+  border: 1px solid color-mix(in srgb, var(--crimson) 26%, transparent);
+}
+
+.account-error-box .icon {
+  margin-top: 2px;
+}
+
+#account-submit {
+  width: 100%;
+  min-height: 43px;
+  margin-top: 4px;
+  justify-content: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--codex-btn-bg);
+  border: 1px solid var(--codex-btn-bg);
+  color: var(--codex-btn-fg);
+  box-shadow: 0 8px 22px -6px rgba(15, 23, 42, 0.28);
+}
+
+#account-submit:hover:not(:disabled) {
+  background: var(--codex-btn-hover);
+  border-color: var(--codex-btn-hover);
+  box-shadow: 0 10px 26px -6px rgba(15, 23, 42, 0.36);
+}
+
+#account-submit:disabled {
+  opacity: 0.55;
+}
+
+#account-submit .submit-arrow {
+  transition: transform 160ms var(--ease-out);
+}
+
+#account-submit:hover:not(:disabled) .submit-arrow {
+  transform: translateX(3px);
+}
+
+#account-submit[aria-busy="true"] .submit-arrow {
+  display: none;
+}
+
+.account-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+}
+
+.account-footer a.account-switch-link {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink-primary);
+  text-decoration: none;
+}
+
+.account-footer a.account-switch-link:hover {
+  color: var(--signal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.registration-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 10px 13px;
+  border-radius: 10px;
+  background: var(--jade-wash);
+  border: 1px solid color-mix(in srgb, var(--jade) 26%, transparent);
+  color: var(--jade);
+  font-size: 13px;
+}
+
+.registration-notice .icon {
+  margin-top: 3px;
+}
+
+@media (max-width: 520px) {
+  .account-topbar {
+    top: 12px;
+    right: 12px;
+  }
+  .account-stage {
+    padding: 44px 14px 24px;
+  }
+}

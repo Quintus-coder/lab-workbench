@@ -1,7 +1,5 @@
-"use strict";
-
 // Layout only: no file requests, edits, or changes to task state.
-function initReadingLayout() {
+export function initReadingLayout() {
   const bench = document.getElementById("workbench");
   const handle = document.getElementById("files-divider");
   const panel = document.getElementById("files-pane");

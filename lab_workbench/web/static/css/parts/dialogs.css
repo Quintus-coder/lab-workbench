@@ -1,0 +1,240 @@
+/* Frosted Translucent Dialogs */
+dialog {
+  color: var(--ink-primary);
+  background: var(--float);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xl);
+  padding: 26px;
+  width: min(468px, calc(100% - 32px));
+  max-height: 85dvh;
+  overflow: auto;
+  box-shadow: var(--float-shadow);
+}
+
+dialog[open] {
+  animation: modal-in 210ms var(--ease-out);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+dialog .panel-title {
+  margin-bottom: 18px;
+}
+
+dialog .panel-title h2 {
+  font-family: var(--font-display);
+  font-size: 17.5px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: var(--ink-primary);
+}
+
+dialog label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  margin-bottom: 8px;
+}
+
+dialog input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 40px;
+  font-size: 13.5px;
+}
+
+dialog p {
+  margin: 10px 0;
+  line-height: 1.65;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.selection-list {
+  padding: 10px 14px 10px 28px;
+  margin: 12px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: var(--radius-md);
+  background: var(--code-well);
+  border: 1px solid var(--hairline);
+  font: 13px/1.65 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.dialog-error {
+  margin: 8px 0 0;
+  color: var(--crimson);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.confirm-match-wrap {
+  margin-top: 12px;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+dialog.snapshot-dialog {
+  width: min(860px, calc(100% - 32px));
+}
+
+dialog.snapshot-dialog .panel-title {
+  margin-bottom: 12px;
+}
+
+.snapshot-body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 360px;
+  max-height: 62dvh;
+}
+
+.snapshot-sidebar {
+  min-width: 0;
+  overflow: auto;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  background: var(--code-well);
+}
+
+.snapshot-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.snapshot-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.snapshot-file-row:hover {
+  background: var(--hover-wash);
+}
+
+.snapshot-file-row.is-selected {
+  background: var(--select-wash);
+  box-shadow: inset 2px 0 0 var(--select-line);
+}
+
+.snapshot-file-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-secondary);
+  justify-content: space-between;
+  text-align: left;
+  font-size: 12px;
+}
+
+.snapshot-file-btn:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink-primary);
+}
+
+.snapshot-file-row.is-selected .snapshot-file-btn {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.snapshot-file-btn > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.snapshot-file-size {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.snapshot-preview {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  background: var(--code-well);
+  overflow: hidden;
+}
+
+.snapshot-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
+}
+
+#snapshot-file-path {
+  font: 600 12.5px/1.4 var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapshot-text {
+  margin: 0;
+  padding: 12px;
+  flex: 1;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12.5px/1.65 var(--font-mono);
+  color: var(--ink-primary);
+}
+
+.snapshot-binary,
+#snapshot-preview-empty {
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+}
+
+.snapshot-binary .document-link {
+  margin-top: 12px;
+}

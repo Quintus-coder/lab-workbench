@@ -1,0 +1,290 @@
+/* Controls */
+button, .icon-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--control-height);
+  padding: 5px 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--ink-primary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 1px rgba(24, 23, 21, 0.03);
+  transition:
+    background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 120ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+
+button:hover:not(:disabled), .icon-control:hover {
+  background: var(--hover-wash);
+  border-color: var(--ink-muted);
+}
+
+button:active:not(:disabled), .icon-control:active {
+  transform: scale(0.975);
+}
+
+button:disabled {
+  background: var(--control-disabled);
+  border-color: var(--hairline);
+  color: var(--ink-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--signal);
+  border-color: transparent;
+  color: var(--on-signal);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--on-signal) 20%, transparent);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--signal-hover);
+  border-color: transparent;
+}
+
+button.primary:disabled {
+  background: var(--control-disabled);
+  border-color: var(--hairline);
+  color: var(--ink-muted);
+  box-shadow: none;
+}
+
+button.quiet, .icon-control {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-tertiary);
+  box-shadow: none;
+}
+
+button.quiet:hover:not(:disabled), .icon-control:hover {
+  border-color: transparent;
+  background: var(--hover-wash);
+  color: var(--ink-primary);
+}
+
+button.quiet:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  opacity: 0.48;
+}
+
+button.danger {
+  color: var(--crimson);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--crimson-wash);
+  border-color: transparent;
+  color: var(--crimson);
+}
+
+button.icon-only, .icon-control {
+  width: var(--control-height);
+  min-width: var(--control-height);
+  padding: 6px;
+}
+
+.compact-btn {
+  min-height: 30px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+}
+
+button[aria-busy="true"] {
+  cursor: progress;
+}
+
+button[aria-busy="true"] > .icon {
+  display: none;
+}
+
+button[aria-busy="true"]::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+a {
+  color: var(--azure);
+  text-decoration: none;
+  text-underline-offset: 3px;
+  transition: color 140ms var(--ease-out);
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+input:not([type="checkbox"]):not([type="file"]), select, textarea {
+  background: var(--control-well);
+  color: var(--ink-primary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  max-width: 100%;
+  font-size: 13px;
+  transition:
+    border-color 150ms var(--ease-out),
+    box-shadow 150ms var(--ease-out),
+    background-color 150ms var(--ease-out);
+}
+
+input:not([type="checkbox"]):not([type="file"]), select {
+  min-height: var(--control-height);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+input:hover:not(:disabled), select:hover:not(:disabled) {
+  border-color: var(--hairline-strong);
+}
+
+input:disabled, select:disabled {
+  background: var(--control-disabled);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 30px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m5 6 3 3 3-3' fill='none' stroke='%238c8578' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+select::picker-icon {
+  display: none;
+}
+
+option {
+  color: var(--ink-primary);
+  background: var(--paper);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--azure);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+input:focus-visible, select:focus-visible {
+  outline: none;
+  background: var(--control-bg);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.icon {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.sprite, .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+h1, h2, h3, p {
+  margin: 0;
+}
+
+h1 {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.28;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+h2, h3 {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+p {
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.muted, .hint, .side-note {
+  color: var(--ink-tertiary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.mono-inline {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+}
+
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--well);
+  color: var(--ink-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

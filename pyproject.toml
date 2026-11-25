@@ -21,7 +21,7 @@ where = ["."]
 include = ["lab_workbench*"]
 
 [tool.setuptools.package-data]
-lab_workbench = ["web/templates/*.html", "web/static/css/*.css", "web/static/js/*.js"]
+lab_workbench = ["web/templates/*.html", "web/static/css/**/*.css", "web/static/js/**/*.js"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

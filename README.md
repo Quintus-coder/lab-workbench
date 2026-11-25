@@ -77,4 +77,4 @@ python -m pytest -q
 python -m pip wheel . --no-deps --wheel-dir dist
 ```
 
-仓库名与 Python 包名统一为 `lab-workbench` / `lab_workbench`，根目录提供 `main.py` 直出启动入口，前端页面模板与静态资源集中在 `lab_workbench/web/`（`templates/`、`static/css/`、`static/js/`）。发布 wheel 时只分发应用包；测试保留在 `tests/`；构建产物与本地运行数据由 `.gitignore` 自动忽略。
+仓库名与 Python 包名统一为 `lab-workbench` / `lab_workbench`，根目录提供 `main.py` 直出启动入口，前端页面模板与静态资源集中在 `lab_workbench/web/`（`templates/`、`static/css/`、`static/js/`）。工作台页面的脚本是原生 ES 模块，无需构建：入口为 `static/js/workbench.js`，`core/` 放请求、状态、主题与通用界面工具，`features/` 按功能（文件、编辑器、上传、任务、项目、成员、登录）划分；`static/css/app.css` 按层叠顺序 `@import` `parts/` 下的分片样式。发布 wheel 时只分发应用包；测试保留在 `tests/`；构建产物与本地运行数据由 `.gitignore` 自动忽略。

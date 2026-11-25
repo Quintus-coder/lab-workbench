@@ -1,0 +1,169 @@
+/* Reading workspace: the same file element stays mounted in both layouts. */
+#files-divider {
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  border-radius: var(--radius-xs);
+}
+
+#files-divider::after {
+  content: "";
+  width: 3.5px;
+  height: 40px;
+  border-radius: 99px;
+  background: var(--hairline-strong);
+  transition: background-color 150ms var(--ease-out), height 150ms var(--ease-out);
+}
+
+#files-divider:hover::after, .resizing-files #files-divider::after {
+  height: 64px;
+  background: var(--ink-tertiary);
+}
+
+#files-divider:focus-visible::after {
+  height: 64px;
+  background: var(--signal);
+}
+
+.resizing-files {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.resizing-files iframe {
+  pointer-events: none;
+}
+
+.queue-open .queue-panel {
+  margin-inline-start: 10px;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.panel-title h2, .file-tree .file-open, .nav-tab {
+  font-size: 13.5px;
+}
+
+.file-tree .file-open {
+  line-height: 1.55;
+}
+
+#editor-path {
+  font-variant-numeric: tabular-nums;
+}
+
+.document-area, #pdf-preview, .image-preview-wrap {
+  min-height: 0;
+}
+
+body.reading-focus {
+  overflow: hidden;
+  height: 100dvh;
+}
+
+.reading-focus .masthead, .reading-focus .files-panel, .reading-focus #files-divider,
+.reading-focus #queue-panel, .reading-focus .workspace-status, .reading-focus #console-resizer,
+.reading-focus #job-dialog {
+  display: none;
+}
+
+.reading-focus #workspace {
+  position: fixed;
+  inset: 0;
+  background: var(--paper);
+}
+
+.reading-focus #workbench {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.reading-focus .workbench-main, .reading-focus .project-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.reading-focus .project-panel {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.reading-focus .code-area {
+  min-height: 0;
+}
+
+.reading-focus .editor-footer {
+  border-radius: 0;
+}
+
+.reading-focus #reading-mode {
+  background: var(--select-wash);
+  color: var(--ink-primary);
+  border-color: var(--select-line);
+}
+
+@media (max-width: 760px) {
+  #files-divider {
+    display: none;
+  }
+  .workbench.queue-open .queue-panel {
+    margin-inline-start: 0;
+  }
+  .project-panel:has(#pdf-preview:not([hidden])),
+  .project-panel:has(#image-preview-wrap:not([hidden])) {
+    min-height: 75dvh;
+  }
+  .reading-focus .project-panel:has(#pdf-preview:not([hidden])),
+  .reading-focus .project-panel:has(#image-preview-wrap:not([hidden])) {
+    min-height: 0;
+  }
+}
+
+/* Keep document chrome on one line, including in the narrow file pane. */
+.viewing-document .editor-heading {
+  flex-wrap: nowrap;
+}
+
+.viewing-document .file-heading {
+  min-width: 0;
+}
+
+.viewing-document .editor-actions {
+  width: auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+#document-tools {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#compact-document-tools #document-tools {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+#compact-document-tools .document-link {
+  border-color: transparent;
+  background: transparent;
+}
+
+#compact-document-tools .document-link:hover {
+  background: var(--hover-wash);
+}

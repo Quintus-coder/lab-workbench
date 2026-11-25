@@ -1,0 +1,307 @@
+@media (min-width: 1600px) {
+  :root {
+    --files-width: 284px;
+    --queue-width: 318px;
+  }
+}
+
+@media (max-width: 1400px) {
+  :root {
+    --files-width: 244px;
+    --queue-width: 276px;
+  }
+  .masthead {
+    gap: 10px;
+    padding: 6px 14px;
+  }
+  .header-project-bar #projects {
+    max-width: 180px;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 761px) {
+  :root {
+    --console-size: 204px;
+  }
+  .masthead {
+    min-height: 48px;
+    padding: 5px 14px;
+  }
+  .workbench {
+    padding: 8px 10px;
+  }
+  .files-panel {
+    padding: 10px 9px;
+  }
+  .editor-heading {
+    min-height: 42px;
+    padding: 6px 14px;
+  }
+  .editor-footer {
+    padding: 4px 14px;
+  }
+  .workspace-status {
+    min-height: 24px;
+    padding: 3px 14px;
+  }
+}
+
+@media (max-width: 1200px) {
+  #reading-mode {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    padding: 6px;
+  }
+  #reading-mode > span {
+    display: none;
+  }
+}
+
+@media (max-width: 1120px) {
+  :root {
+    --files-width: 228px;
+    --queue-width: 264px;
+  }
+  .notice-detail {
+    display: none;
+  }
+  .header-project-bar #projects {
+    max-width: 160px;
+    min-width: 100px;
+  }
+  .environment-control select {
+    max-width: 136px;
+    min-width: 88px;
+  }
+}
+
+@media (max-width: 959px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+  .login-brief {
+    display: none;
+  }
+  .login-mobile-brand {
+    display: flex;
+  }
+  .login-panel {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 880px) {
+  .masthead {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  #main-navigation {
+    order: 3;
+    width: 100%;
+  }
+  .nav-tab {
+    flex: 1;
+  }
+  .history-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  body {
+    height: auto;
+    min-height: 100dvh;
+    overflow: auto;
+  }
+  .masthead .role-badge, .notice-detail {
+    display: none;
+  }
+  .header-left {
+    flex: 1;
+    min-width: 0;
+  }
+  .header-project-bar {
+    flex: 1;
+  }
+  .header-project-bar #projects {
+    flex: 1;
+    max-width: 180px;
+  }
+  .workbench, .workbench.queue-open {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    padding: 10px;
+    gap: 10px;
+  }
+  .files-panel {
+    max-height: 310px;
+    flex: none;
+  }
+  .drop-zone {
+    min-height: 48px;
+    max-height: 150px;
+  }
+  .drop-hint {
+    display: none;
+  }
+  .transfers {
+    max-height: 160px;
+  }
+  .project-panel {
+    min-height: 360px;
+    flex: none;
+  }
+  .editor-heading {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+  .file-heading {
+    min-width: 100%;
+  }
+  .editor-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+  .environment-control {
+    margin-right: auto;
+  }
+  .environment-control select {
+    max-width: 196px;
+    min-width: 80px;
+  }
+  .code-area {
+    min-height: 240px;
+  }
+  .editor-footer {
+    padding: 6px 12px;
+  }
+  .console-resizer {
+    display: none;
+  }
+  .workspace-console {
+    flex: none;
+    height: 300px;
+    margin-top: 8px;
+  }
+  .workspace-console.is-collapsed {
+    height: 40px;
+  }
+  #console-expand {
+    display: none;
+  }
+  .history-panel {
+    padding: 20px 12px;
+  }
+  .workspace-status > span:last-child {
+    display: none;
+  }
+  .snapshot-body {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+  .snapshot-sidebar {
+    max-height: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  .masthead {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .brand-title, #preview-notice, #theme-label, #new-project > span, #queue-toggle > span:not(.count-pill) {
+    display: none;
+  }
+  .header-left {
+    flex: 1 1 160px;
+    min-width: 0;
+    gap: 6px;
+  }
+  .crumb-sep {
+    display: none;
+  }
+  .header-project-bar {
+    flex: 1 1 120px;
+    min-width: 0;
+    gap: 4px;
+  }
+  .header-project-bar #projects {
+    flex: 1 1 120px;
+    min-width: 120px;
+    max-width: 100%;
+  }
+  #new-project {
+    width: 30px;
+    min-width: 30px;
+    padding: 4px;
+  }
+  .header-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .queue-pill, .theme-toggle {
+    padding: 3px 7px;
+  }
+  .user-menu {
+    padding-left: 4px;
+  }
+  .user-trigger {
+    padding: 3px 6px;
+  }
+  #identity {
+    max-width: 64px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-height: 42px;
+  }
+  button.icon-only, .icon-control {
+    min-width: 42px;
+    width: 42px;
+  }
+  .split-button > details > .icon-control {
+    min-width: 42px;
+    width: 42px;
+  }
+  input, select, textarea {
+    font-size: 16px;
+  }
+  textarea.code-editor, .editor-lines {
+    font-size: 16px;
+  }
+  .tree-file .file-download,
+  .row-menu > summary.icon-control {
+    opacity: 1;
+    min-height: 42px;
+    min-width: 42px;
+    justify-content: center;
+  }
+  .file-tree summary, .tree-file .file-open {
+    min-height: 42px;
+  }
+  .console-tabs button {
+    min-height: 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  button, .icon-control, input, select, .role-card[aria-checked="true"], .role-card[aria-pressed="true"], .tree-file.is-selected {
+    border: 1px solid ButtonText;
+  }
+  .console-tabs [aria-selected="true"] {
+    border-bottom-color: Highlight;
+  }
+}
