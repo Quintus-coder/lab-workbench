@@ -1,45 +1,9 @@
-"use strict";
+// Login and registration page. Shares the workbench theme switcher (auto -> light -> dark).
+import { initAccountBackdrop } from "./account-backdrop.js";
+import { initTheme } from "./core/theme.js";
 
-const THEME_MODES = [
-  { key: "dark", label: "深色", icon: "#i-moon" },
-  { key: "light", label: "浅色", icon: "#i-sun" }
-];
-
-function readAccountTheme() {
-  try {
-    const v = localStorage.getItem("gc_theme");
-    if (v === "light" || v === "dark") return v;
-  } catch { /* Storage is optional for login. */ }
-  // Default login/register portal to dark-tech showcase without overwriting storage until toggled
-  return "dark";
-}
-
-function renderAccountTheme(mode, persist = false) {
-  const item = THEME_MODES.find(m => m.key === mode) || THEME_MODES[0];
-  document.documentElement.dataset.theme = item.key;
-
-  const icon = document.getElementById("account-theme-icon");
-  const label = document.getElementById("account-theme-label");
-  const btn = document.getElementById("account-theme-toggle");
-  if (icon) icon.setAttribute("href", item.icon);
-  if (label) label.textContent = item.label;
-  if (btn) btn.title = `显示主题：${item.label}（点击切换）`;
-
-  if (persist) {
-    try {
-      localStorage.setItem("gc_theme", item.key);
-    } catch { /* Storage is optional for login. */ }
-  }
-}
-
-renderAccountTheme(readAccountTheme(), false);
-const themeToggle = document.getElementById("account-theme-toggle");
-if (themeToggle) {
-  themeToggle.onclick = () => {
-    const current = document.documentElement.dataset.theme === "light" ? "light" : "dark";
-    renderAccountTheme(current === "dark" ? "light" : "dark", true);
-  };
-}
+initTheme();
+initAccountBackdrop(document.getElementById("account-backdrop"), document.querySelector(".password-card"));
 
 const accountForm = document.getElementById("account-form");
 const registering = accountForm.dataset.mode === "register";

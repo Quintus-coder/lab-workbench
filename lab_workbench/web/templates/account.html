@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{{ '注册' if register else '登录' }} · 实验工作台</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=codex5">
-  <script src="/static/js/ripples.js?v=codex5" defer></script>
-  <script src="/static/js/account.js?v=codex5" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=account2">
+  <script type="module" src="/static/js/account.js?v=account2"></script>
 </head>
 <body class="account-page">
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -22,28 +21,25 @@
     <symbol id="i-arrow" viewBox="0 0 20 20"><path d="M4.2 10h11.6M11.3 5.6 15.8 10l-4.5 4.4"/></symbol>
   </svg>
 
-  <canvas id="ripple-canvas" class="ripple-canvas" aria-hidden="true"></canvas>
+  <canvas id="account-backdrop" class="account-backdrop" aria-hidden="true"></canvas>
 
-  <header class="account-topbar">
-    <button id="account-theme-toggle" type="button" class="account-theme-pill" aria-label="切换显示主题">
-      <svg class="icon" aria-hidden="true"><use id="account-theme-icon" href="#i-monitor"/></svg>
-      <span id="account-theme-label">自动</span>
+  <header class="masthead account-masthead">
+    <a class="brand" href="/login" aria-label="实验工作台登录">
+      <span class="brand-glyph" aria-hidden="true">
+        <svg class="icon"><use href="#i-terminal"/></svg>
+      </span>
+      <span class="brand-title">实验工作台</span>
+    </a>
+    <button id="theme-toggle" type="button" class="quiet theme-toggle" aria-label="切换显示主题">
+      <svg class="icon" aria-hidden="true"><use id="theme-icon" href="#i-monitor"/></svg>
+      <span id="theme-label">自动</span>
     </button>
   </header>
 
   <main class="account-stage">
     <section class="account-card password-card" aria-labelledby="account-heading">
-      <div class="account-brand-minimal">
-        <span class="brand-glyph" aria-hidden="true">
-          <svg class="icon"><use href="#i-terminal"/></svg>
-        </span>
-        <span>实验工作台</span>
-      </div>
-
       <h1 id="account-heading">{{ '注册账号' if register else '登录' }}</h1>
-      {% if register %}
-      <p class="account-subtitle muted">仅限管理员已批准的邮箱注册</p>
-      {% endif %}
+      <p class="account-subtitle muted">{{ '仅限管理员已批准的邮箱注册' if register else '使用组内邮箱和密码进入工作台' }}</p>
 
       <p id="registration-notice" class="registration-notice" role="status" hidden>
         <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
