@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>实验工作台 · Windows 任务调度</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=codex2">
-  <script src="/static/js/reading-layout.js?v=codex2" defer></script>
-  <script src="/static/js/app.js?v=codex2" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=sync1">
+  <script src="/static/js/reading-layout.js?v=sync1" defer></script>
+  <script src="/static/js/app.js?v=sync1" defer></script>
 </head>
 <body>
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -49,6 +49,19 @@
         <span class="crumb-sep" aria-hidden="true">/</span>
         <label for="projects" class="sr-only">选择项目</label>
         <select id="projects" aria-label="选择项目"><option value="">尚无项目</option></select>
+        <details id="project-menu" class="action-menu project-menu" hidden>
+          <summary class="icon-control" aria-label="项目管理" title="项目管理">
+            <svg class="icon" aria-hidden="true"><use href="#i-more"/></svg>
+          </summary>
+          <div class="action-popover">
+            <button id="rename-project" type="button" class="quiet">重命名项目…</button>
+            <a id="archive-project" class="menu-link">
+              <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+              <span>打包下载 (.zip)</span>
+            </a>
+            <button id="delete-project" type="button" class="quiet danger">删除项目…</button>
+          </div>
+        </details>
         <button id="new-project" type="button" class="quiet compact-btn" aria-label="新建项目">
           <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
           <span>新建</span>
@@ -67,7 +80,7 @@
     </nav>
 
     <div class="header-actions">
-      <div class="notice-pill" id="preview-notice" title="文件传输与排队可试用。执行器尚未接入，任务会保持等待；请勿上传敏感资料。" {% if not development %}hidden{% endif %}>
+      <div class="notice-pill" id="preview-notice" title="文件传输与排队可试用。执行器尚未接入，任务会保持等待；请勿上传敏感资料。" hidden>
         <span class="notice-dot" aria-hidden="true"></span>
         <strong>本地预览</strong>
         <span class="notice-detail">未接执行器</span>
@@ -82,7 +95,12 @@
         <span id="waiting-count" class="count-pill">0</span>
       </button>
 
-      <details id="user-menu" class="action-menu user-menu">
+      <button id="theme-toggle" type="button" class="quiet theme-toggle" aria-label="切换显示主题">
+        <svg class="icon" aria-hidden="true"><use id="theme-icon" href="#i-monitor"/></svg>
+        <span id="theme-label">自动</span>
+      </button>
+
+      <details id="user-menu" class="action-menu user-menu" hidden>
         <summary class="user-trigger" aria-label="用户菜单">
           <svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>
           <span id="identity">未登录</span>
@@ -93,10 +111,6 @@
           <button id="members-toggle" type="button" class="quiet" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-person"/></svg>
             <span>成员管理</span>
-          </button>
-          <button id="theme-toggle" type="button" class="quiet theme-toggle" aria-label="切换显示主题">
-            <svg class="icon" aria-hidden="true"><use id="theme-icon" href="#i-monitor"/></svg>
-            <span id="theme-label">自动</span>
           </button>
           <button id="logout" type="button" class="quiet danger" hidden>退出</button>
         </div>
@@ -112,85 +126,122 @@
     </button>
   </div>
 
-  {% if development %}
-  <section id="login" class="login-stage">
+  <section id="login" class="login-stage" {% if password_auth %}hidden{% endif %}>
     <div class="login-shell">
       <div class="login-brief">
-        <div class="brief-top">
-          <span class="brief-kicker">GROUP COMPUTE · WORKBENCH</span>
-          <span class="tag">本机开发试用</span>
+        <div class="login-brief-brand">
+          <span class="brand-glyph" aria-hidden="true">
+            <svg class="icon"><use href="#i-terminal"/></svg>
+          </span>
+          <span>实验工作台</span>
         </div>
+
         <h1>从项目文件到<br>可追踪计算队列</h1>
-        <p class="brief-copy">上传实验代码与数据集，直接在浏览器内修订入口脚本，每次提交都会锁定独立只读快照并进入公平轮转队列。</p>
-        <ol class="brief-steps">
+
+        <ul class="brief-features">
           <li>
-            <span class="step-num">01</span>
-            <div>
-              <strong>组织项目文件</strong>
-              <small>支持目录结构上传、断点续传与同名覆盖保护</small>
-            </div>
+            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+            <span>保留目录结构上传文件与文件夹，支持断点续传与覆盖确认</span>
           </li>
           <li>
-            <span class="step-num">02</span>
-            <div>
-              <strong>编写作业入口</strong>
-              <small>在 <span class="mono-inline">run.ps1</span> 或 <span class="mono-inline">.py</span> 中直接管理参数</small>
-            </div>
+            <svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>
+            <span>在线修订 <span class="mono-inline">run.ps1</span> 或 Python 脚本，保存即锁定独立快照</span>
           </li>
           <li>
-            <span class="step-num">03</span>
-            <div>
-              <strong>独立队列与产物归档</strong>
-              <small>断开网页不中断任务，结束后统一下载日志与输出</small>
-            </div>
+            <svg class="icon" aria-hidden="true"><use href="#i-queue"/></svg>
+            <span>进入单并发公平轮转队列，关闭网页不中断任务与日志归档</span>
           </li>
-        </ol>
-        <p class="brief-foot">Windows 计算节点 · 单并发公平调度 · 本地预览模式</p>
+        </ul>
+
+        <div class="brief-status-tags">
+          <span class="status-chip"><span class="connection-dot" aria-hidden="true"></span>Windows 节点 · 待配置</span>
+          <span class="status-chip">执行器未接入</span>
+        </div>
       </div>
 
       <div class="login-panel">
-        <div class="login-panel-head">
-          <h2>选择试用身份</h2>
-          <p class="muted">本地模式仅用于界面与队列验证，请勿上传敏感数据。</p>
-        </div>
+        <div class="login-panel-inner">
+          <div class="login-mobile-brand">
+            <span class="brand-glyph" aria-hidden="true">
+              <svg class="icon"><use href="#i-terminal"/></svg>
+            </span>
+            <span>实验工作台</span>
+          </div>
 
-        <div class="role-cards" role="group" aria-label="快捷选择试用身份">
-          <button type="button" class="role-card" data-member="alice" aria-pressed="true">
-            <span class="role-avatar">甲</span>
-            <span class="role-meta">
-              <strong>组员甲</strong>
-              <small>标准成员 · 个人项目与任务队列</small>
-            </span>
-          </button>
-          <button type="button" class="role-card" data-member="bob" aria-pressed="false">
-            <span class="role-avatar">乙</span>
-            <span class="role-meta">
-              <strong>组员乙</strong>
-              <small>标准成员 · 独立成员隔离空间</small>
-            </span>
-          </button>
-          <button type="button" class="role-card" data-member="admin" aria-pressed="false">
-            <span class="role-avatar">管</span>
-            <span class="role-meta">
-              <strong>试用管理员</strong>
-              <small>管理员 · 可检视全组成员排队状态</small>
-            </span>
-          </button>
-        </div>
+          {% if development %}
+          <div id="dev-login-panel">
+            <div class="login-panel-head">
+              <h2>选择试用身份</h2>
+            </div>
 
-        <form id="login-form">
-          <input type="hidden" id="login-member" value="alice">
-          <button type="submit" class="primary login-submit">
-            <span>进入工作台</span>
-            <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
-          </button>
-        </form>
+            <div class="login-hint-banner" role="note">
+              <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
+              <span>本地开发模式 · 无需密码 · 仅本机可访问</span>
+            </div>
+
+            <div class="role-cards" role="radiogroup" aria-label="选择试用身份">
+              <button type="button" class="role-card" data-member="alice" role="radio" aria-checked="true" tabindex="0">
+                <span class="role-avatar" data-tone="alice">甲</span>
+                <span class="role-meta">
+                  <strong>组员甲</strong>
+                  <small>标准成员 · 个人项目与任务队列</small>
+                </span>
+              </button>
+              <button type="button" class="role-card" data-member="bob" role="radio" aria-checked="false" tabindex="-1">
+                <span class="role-avatar" data-tone="bob">乙</span>
+                <span class="role-meta">
+                  <strong>组员乙</strong>
+                  <small>标准成员 · 独立成员隔离空间</small>
+                </span>
+              </button>
+              <button type="button" class="role-card" data-member="admin" role="radio" aria-checked="false" tabindex="-1">
+                <span class="role-avatar" data-tone="admin">管</span>
+                <span class="role-meta">
+                  <span class="role-title-row">
+                    <strong>试用管理员</strong>
+                    <span class="role-badge">管理员</span>
+                  </span>
+                  <small>可检视全组成员排队状态</small>
+                </span>
+              </button>
+            </div>
+
+            <form id="login-form">
+              <input type="hidden" id="login-member" value="alice">
+              <button type="submit" class="primary login-submit">
+                <span>进入工作台</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>
+              </button>
+            </form>
+          </div>
+          {% else %}
+          <div id="prod-auth-panel" class="prod-auth-panel" data-state="loading" {% if password_auth %}hidden{% endif %}>
+            <div class="auth-state" data-auth-view="loading">
+              <span class="auth-spinner" aria-hidden="true"></span>
+              <h2>正在验证身份</h2>
+              <p class="muted">正在确认登录会话与成员权限，请稍候…</p>
+            </div>
+            <div class="auth-state" data-auth-view="forbidden" hidden>
+              <div class="auth-state-icon is-warn" aria-hidden="true">
+                <svg class="icon"><use href="#i-alert"/></svg>
+              </div>
+              <h2>请联系管理员开通</h2>
+              <p class="muted">您的身份已通过验证，但当前账号尚未加入成员名单，请联系管理员开通访问权限。</p>
+            </div>
+            <div class="auth-state" data-auth-view="expired" hidden>
+              <div class="auth-state-icon" aria-hidden="true">
+                <svg class="icon"><use href="#i-person"/></svg>
+              </div>
+              <h2>登录已过期</h2>
+              <p id="prod-auth-detail" class="muted">当前登录会话已过期或尚未完成验证，请重新登录。</p>
+              <button type="button" id="relogin-btn" class="primary login-submit">重新登录</button>
+            </div>
+          </div>
+          {% endif %}
+        </div>
       </div>
     </div>
   </section>
-
-
-  {% endif %}
   <main id="workspace" class="workspace" hidden>
     <div id="workbench" class="workbench">
       <aside id="files-pane" class="files-panel" aria-label="项目文件">
@@ -248,7 +299,10 @@
           <div id="transfers"></div>
         </section>
 
-        <p id="project-stats" class="file-summary">项目保存代码、数据与结果</p>
+        <div id="project-usage" class="file-summary">
+          <p id="project-stats">项目保存代码、数据与结果</p>
+          <progress id="project-usage-bar" class="usage-bar" max="100" value="0" aria-label="项目空间用量" hidden></progress>
+        </div>
       </aside>
 
       <div id="files-divider" role="separator" tabindex="0" aria-label="调整文件栏宽度" aria-orientation="vertical" aria-controls="files-pane" aria-valuemin="196" aria-valuemax="480" aria-valuenow="264"></div>
@@ -311,6 +365,9 @@
 
           <div id="document-area" class="document-area" hidden>
             <iframe id="pdf-preview" title="PDF 文档预览" hidden></iframe>
+            <div id="image-preview-wrap" class="image-preview-wrap" hidden>
+              <img id="image-preview" alt="">
+            </div>
             <div id="document-placeholder" class="document-placeholder">
               <span id="document-format" class="file-kind"></span>
               <h2 id="document-title"></h2>
@@ -354,6 +411,9 @@
               <div class="console-heading" hidden>
                 <strong id="job-title">当前未选择任务</strong>
                 <span id="job-dialog-status" class="status" hidden></span>
+                <span id="job-queue-pos" class="queue-pos-pill" hidden></span>
+                <button type="button" id="rerun-job" class="quiet" hidden>重新运行</button>
+                <button type="button" id="view-snapshot" class="quiet" hidden>查看提交时的文件</button>
                 <button type="button" id="cancel-job" class="quiet danger" hidden>取消任务</button>
                 <div class="row-actions">
                   <button type="button" id="copy-log" class="quiet icon-only" aria-label="复制日志" title="复制日志" hidden>
@@ -366,7 +426,13 @@
               <pre id="job-log" tabindex="0" aria-label="任务标准输出和错误输出" hidden>尚未选择任务。</pre>
               <p id="log-note" class="muted" hidden></p>
               <details id="job-results" hidden>
-                <summary>结果文件 <span id="output-count" class="muted"></span></summary>
+                <summary>
+                  <span>结果文件 <span id="output-count" class="muted"></span></span>
+                  <a id="outputs-archive" class="document-link outputs-archive-link" hidden>
+                    <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+                    <span>全部打包下载</span>
+                  </a>
+                </summary>
                 <div id="job-outputs"></div>
               </details>
             </div>
@@ -474,6 +540,8 @@
         </span>
         <span class="status-sep" aria-hidden="true">·</span>
         <span id="project-name">尚未选择项目</span>
+        <span id="system-status-sep" class="status-sep" aria-hidden="true" hidden>·</span>
+        <span id="system-status" class="system-status" hidden></span>
       </div>
       <span id="workspace-telemetry" class="telemetry">就绪</span>
     </div>
@@ -546,11 +614,85 @@
         <h2>确认操作</h2>
       </div>
       <p id="confirm-message" class="hint"></p>
+      <div id="confirm-match-wrap" class="confirm-match-wrap" hidden>
+        <label for="confirm-match-input" id="confirm-match-label"></label>
+        <input id="confirm-match-input" type="text" autocomplete="off">
+      </div>
       <div class="dialog-actions">
-        <button value="no">返回</button>
+        <button value="no" formnovalidate>返回</button>
         <button value="yes" class="primary" id="confirm-yes">确认</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="rename-project-dialog">
+    <form id="rename-project-form">
+      <div class="panel-title">
+        <h2>重命名项目</h2>
+        <button type="button" class="quiet icon-only close-dialog" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </div>
+      <label for="rename-project-name">新项目名称</label>
+      <input id="rename-project-name" maxlength="120" required autocomplete="off">
+      <p id="rename-project-error" class="dialog-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="close-dialog">取消</button>
+        <button type="submit" class="primary">保存名称</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="rename-file-dialog">
+    <form id="rename-file-form">
+      <div class="panel-title">
+        <h2>重命名 / 移动文件</h2>
+        <button type="button" class="quiet icon-only close-dialog" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </div>
+      <p id="rename-file-current" class="muted"></p>
+      <label for="rename-file-path">新路径（相对于项目根目录）</label>
+      <input id="rename-file-path" maxlength="500" required autocomplete="off" placeholder="例如：scripts/main.py">
+      <p id="rename-file-error" class="dialog-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="close-dialog">取消</button>
+        <button type="submit" class="primary">确认移动</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="snapshot-dialog" class="snapshot-dialog">
+    <div class="panel-title">
+      <h2>提交时的文件快照</h2>
+      <span id="snapshot-meta" class="muted"></span>
+      <button type="button" class="quiet icon-only close-dialog" aria-label="关闭">
+        <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="snapshot-body">
+      <div class="snapshot-sidebar">
+        <ul id="snapshot-files" class="snapshot-file-list" aria-label="快照文件列表"></ul>
+      </div>
+      <div class="snapshot-preview">
+        <div id="snapshot-preview-head" class="snapshot-preview-head" hidden>
+          <strong id="snapshot-file-path"></strong>
+          <a id="snapshot-file-download" class="document-link">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>下载</span>
+          </a>
+        </div>
+        <p id="snapshot-preview-empty" class="muted">从左侧选择文件查看只读内容或下载。</p>
+        <pre id="snapshot-text" class="snapshot-text" tabindex="0" hidden></pre>
+        <div id="snapshot-binary" class="snapshot-binary" hidden>
+          <p id="snapshot-binary-note" class="muted"></p>
+          <a id="snapshot-binary-download" class="document-link">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>下载此文件</span>
+          </a>
+        </div>
+      </div>
+    </div>
   </dialog>
 </body>
 </html>

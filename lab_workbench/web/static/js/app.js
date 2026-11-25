@@ -5,6 +5,8 @@ const S = {
   config: null,
   projects: [],
   project: null,
+  usage: null,
+  systemStatus: null,
   files: [],
   jobs: [],
   transfers: [],
@@ -12,9 +14,12 @@ const S = {
   resumeTarget: null,
   busy: false,
   detail: null,
+  detailJob: null,
   offset: 0,
   log: "",
   pendingSubmit: null,
+  pendingReruns: {},
+  renamingFile: null,
   editor: null,
   editingBusy: false,
   submitting: false,
@@ -25,6 +30,7 @@ const S = {
   queueOpen: false,
   openDirs: new Set()
 };
+const IMAGE_EXT_RE = /\.(png|jpe?g|webp)$/i;
 const states = {
   queued: "等待中",
   starting: "启动中",
@@ -167,13 +173,38 @@ function guarded(fn) {
   };
 }
 
-function ask(text) {
+function ask(text, options = {}) {
   return new Promise(resolve => {
     const d = $("confirm-dialog");
+    const wrap = $("confirm-match-wrap");
+    const input = $("confirm-match-input");
+    const yes = $("confirm-yes");
+    const expect = options.expect || "";
     $("confirm-message").textContent = text;
+    if (expect) {
+      $("confirm-match-label").textContent = `请输入“${expect}”以确认`;
+      input.value = "";
+      input.placeholder = expect;
+      wrap.hidden = false;
+      yes.disabled = true;
+      input.oninput = () => { yes.disabled = input.value.trim() !== expect; };
+    } else {
+      wrap.hidden = true;
+      input.value = "";
+      input.oninput = null;
+      yes.disabled = false;
+    }
     d.returnValue = "";
-    d.addEventListener("close", () => resolve(d.returnValue === "yes"), { once: true });
+    d.addEventListener("close", () => {
+      const confirmed = d.returnValue === "yes" && (!expect || input.value.trim() === expect);
+      wrap.hidden = true;
+      input.value = "";
+      input.oninput = null;
+      yes.disabled = false;
+      resolve(confirmed);
+    }, { once: true });
     d.showModal();
+    if (expect) input.focus();
   });
 }
 
@@ -219,16 +250,70 @@ function linkFor(path, text, iconId) {
   return a;
 }
 
+function buildRowMenu(label, items) {
+  const menu = node("details", undefined, "action-menu row-menu");
+  const summary = node("summary", undefined, "icon-control");
+  summary.setAttribute("aria-label", label);
+  summary.title = label;
+  summary.append(svgIcon("#i-more"));
+  const popover = node("div", undefined, "action-popover align-right");
+  for (const item of items) {
+    if (item.href) {
+      const a = linkFor(item.href, item.text, item.icon);
+      a.className = "menu-link";
+      popover.append(a);
+    } else {
+      const b = node("button", undefined, item.danger ? "quiet danger" : "quiet");
+      b.type = "button";
+      if (item.icon) b.append(svgIcon(item.icon));
+      b.append(node("span", item.text));
+      b.onclick = item.onclick;
+      popover.append(b);
+    }
+  }
+  menu.append(summary, popover);
+  return menu;
+}
+
 function syncRoleCards(value) {
   document.querySelectorAll(".role-card").forEach(btn => {
-    btn.setAttribute("aria-pressed", String(btn.dataset.member === value));
+    const selected = btn.dataset.member === value;
+    btn.setAttribute("aria-checked", String(selected));
+    btn.tabIndex = selected ? 0 : -1;
   });
 }
 
-document.querySelectorAll(".role-card").forEach(btn => {
+const roleCards = [...document.querySelectorAll(".role-card")];
+roleCards.forEach((btn, idx) => {
   btn.onclick = () => {
     $("login-member").value = btn.dataset.member;
     syncRoleCards(btn.dataset.member);
+  };
+  btn.ondblclick = () => {
+    $("login-member").value = btn.dataset.member;
+    syncRoleCards(btn.dataset.member);
+    $("login-form")?.requestSubmit();
+  };
+  btn.onkeydown = e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("login-member").value = btn.dataset.member;
+      syncRoleCards(btn.dataset.member);
+      $("login-form")?.requestSubmit();
+      return;
+    }
+    let nextIdx = -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") nextIdx = (idx + 1) % roleCards.length;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") nextIdx = (idx - 1 + roleCards.length) % roleCards.length;
+    else if (e.key === "Home") nextIdx = 0;
+    else if (e.key === "End") nextIdx = roleCards.length - 1;
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      const target = roleCards[nextIdx];
+      $("login-member").value = target.dataset.member;
+      syncRoleCards(target.dataset.member);
+      target.focus();
+    }
   };
 });
 if ($("login-member")) $("login-member").onchange = () => syncRoleCards($("login-member").value);
@@ -270,7 +355,7 @@ function editorControls() {
   $("editor-dirty-dot").hidden = !e?.dirty;
   $("editor-state").textContent = S.editingBusy ? "正在读取 / 保存…" : !e ? "点击项目文件可查看和编辑" : e.dirty ? "未保存修改" : "已保存";
   $("editor-state").dataset.dirty = String(Boolean(e?.dirty));
-  if (documentMode) $("editor-state").textContent = e.kind === "pdf" ? "PDF 只读预览" : "项目文档";
+  if (documentMode) $("editor-state").textContent = e.kind === "pdf" ? "PDF 只读预览" : e.kind === "image" ? "图片只读预览" : "项目文档";
   $("editor-save").disabled = !e || S.editingBusy || S.busy || !e.dirty;
   $("editor-save").title = !e ? "请先打开或新建文件"
     : S.busy ? "请等待当前上传完成后保存"
@@ -300,12 +385,14 @@ function renderEditor() {
   const e = S.editor;
   const documentMode = Boolean(e?.kind && e.kind !== "text");
   const isPdf = e?.kind === "pdf";
+  const isImage = e?.kind === "image";
+  const isPreview = isPdf || isImage;
   $("reading-mode").disabled = !e;
   if (!e) readingLayout.focus(false);
-  if (isPdf && consoleBeforePdf === null) {
+  if (isPreview && consoleBeforePdf === null) {
     consoleBeforePdf = $("console-body").hidden;
     setConsoleCollapsed(true);
-  } else if (!isPdf && consoleBeforePdf !== null) {
+  } else if (!isPreview && consoleBeforePdf !== null) {
     setConsoleCollapsed(consoleBeforePdf);
     consoleBeforePdf = null;
   }
@@ -317,12 +404,16 @@ function renderEditor() {
   $("code-area").hidden = documentMode;
   $("document-area").hidden = !documentMode;
   const frame = $("pdf-preview");
+  const imgWrap = $("image-preview-wrap");
+  const img = $("image-preview");
   if (documentMode) {
     const query = new URLSearchParams({path: e.path});
     $("document-download").href = `/api/projects/${S.project.id}/download?${query}`;
     const pdf = e.kind === "pdf";
+    const image = e.kind === "image";
     frame.hidden = !pdf;
-    $("document-placeholder").hidden = pdf;
+    imgWrap.hidden = !image;
+    $("document-placeholder").hidden = pdf || image;
     const office = /\.(docx|xlsx)$/i.test(e.path);
     $("document-open").hidden = !office || !S.config.office_enabled || e.size > S.config.max_office_bytes;
     $("document-open").href = `/office?${new URLSearchParams({project: S.project.id, path: e.path})}`;
@@ -339,7 +430,26 @@ function renderEditor() {
       $("pdf-popout").href = view;
       if (frame.getAttribute("src") !== view) frame.src = view;
     } else frame.removeAttribute("src");
-  } else frame.removeAttribute("src");
+    if (image) {
+      const view = `/api/projects/${S.project.id}/preview?${query}`;
+      img.alt = e.path;
+      img.onerror = () => {
+        if (S.editor?.kind !== "image" || img.getAttribute("src") !== view) return;
+        imgWrap.hidden = true;
+        $("document-placeholder").hidden = false;
+        $("document-description").textContent = "无法在线预览此图片（可能超过大小上限或文件头与扩展名不符），请下载后查看。";
+      };
+      if (img.getAttribute("src") !== view) img.src = view;
+    } else {
+      img.onerror = null;
+      img.removeAttribute("src");
+    }
+  } else {
+    frame.removeAttribute("src");
+    imgWrap.hidden = true;
+    img.onerror = null;
+    img.removeAttribute("src");
+  }
   $("editor-text").value = S.editor?.text || "";
   $("editor-text").disabled = !S.editor || S.editingBusy;
   editorLines();
@@ -379,10 +489,12 @@ async function openEditor(path, reveal = true) {
   let loaded = false;
   try {
     const query = new URLSearchParams({path});
-    if (/\.(pdf|docx?|xlsx?)$/i.test(path)) {
+    if (/\.(pdf|docx?|xlsx?)$/i.test(path) || IMAGE_EXT_RE.test(path)) {
       const data = await api(`/api/projects/${S.project.id}/file-info?${query}`);
-      S.editor = {...data, kind: /\.pdf$/i.test(path) ? "pdf" : "office", text: "", dirty: false};
+      const kind = /\.pdf$/i.test(path) ? "pdf" : IMAGE_EXT_RE.test(path) ? "image" : "office";
+      S.editor = {...data, kind, text: "", dirty: false};
       $("pdf-preview").removeAttribute("src");
+      $("image-preview").removeAttribute("src");
     } else {
       try {
         const data = await api(`/api/projects/${S.project.id}/text?${query}`);
@@ -410,6 +522,7 @@ async function deleteProjectFile(file) {
   if (S.project?.id !== projectId) return;
   S.editingBusy = true;
   $("pdf-preview").removeAttribute("src");
+  $("image-preview").removeAttribute("src");
   editorControls();
   try {
     await api(`/api/projects/${projectId}/files`, "DELETE", {path: file.path, version: file.version});
@@ -420,6 +533,50 @@ async function deleteProjectFile(file) {
     S.editingBusy = false;
     renderEditor();
   }
+}
+
+async function deleteProjectDir(dirPath) {
+  if (S.busy || S.editingBusy) throw new Error("请等待当前文件操作完成。");
+  const projectId = S.project.id;
+  const dirtyInside = Boolean(S.editor?.dirty && S.editor.path.startsWith(dirPath + "/"));
+  if (!await ask(`永久删除文件夹“${dirPath}”及其中的全部文件？此操作无法撤销。${dirtyInside ? "该文件夹内未保存的修改也会丢弃。" : ""}已提交任务的文件副本不受影响。`)) return;
+  if (S.project?.id !== projectId) return;
+  S.editingBusy = true;
+  if (S.editor?.path.startsWith(dirPath + "/")) {
+    $("pdf-preview").removeAttribute("src");
+    $("image-preview").removeAttribute("src");
+  }
+  editorControls();
+  try {
+    await api(`/api/projects/${projectId}/directories`, "DELETE", {path: dirPath});
+    if (S.editor?.path.startsWith(dirPath + "/")) S.editor = null;
+    for (const openPath of [...S.openDirs]) {
+      if (openPath === dirPath || openPath.startsWith(dirPath + "/")) S.openDirs.delete(openPath);
+    }
+    await refreshFiles();
+    message("文件夹已删除；已提交任务的副本保留");
+  } finally {
+    S.editingBusy = false;
+    renderEditor();
+  }
+}
+
+function openRenameFileDialog(file) {
+  if (!S.project) return;
+  if (S.busy || S.editingBusy) {
+    message("请等待当前文件操作完成。", true);
+    return;
+  }
+  S.renamingFile = file;
+  $("rename-file-current").textContent = `当前路径：${file.path}`;
+  const input = $("rename-file-path");
+  input.value = file.path;
+  $("rename-file-error").hidden = true;
+  $("rename-file-error").textContent = "";
+  $("rename-file-dialog").showModal();
+  input.focus();
+  const slash = file.path.lastIndexOf("/");
+  input.setSelectionRange(slash + 1, file.path.length);
 }
 $("editor-delete").onclick = guarded(() => deleteProjectFile(S.editor));
 
@@ -551,9 +708,44 @@ function renderProjects() {
     $("projects").append(option);
   }
   $("projects").value = S.project?.id || S.projects[0]?.id || "";
+  $("project-menu").hidden = !S.project;
+  if (S.project) {
+    $("archive-project").href = `/api/projects/${S.project.id}/archive`;
+  } else {
+    $("archive-project").removeAttribute("href");
+  }
+  $("rename-project").disabled = !S.project || S.busy || S.editingBusy;
+  $("delete-project").disabled = !S.project || S.busy || S.editingBusy;
   for (const id of ["upload-files", "upload-folder", "new-file", "refresh-files", "file-filter"]) {
     $(id).disabled = !S.project || S.busy;
   }
+}
+
+function renderUsage() {
+  const bar = $("project-usage-bar");
+  const stats = $("project-stats");
+  if (!S.project) {
+    stats.textContent = "项目保存代码、数据与结果";
+    bar.hidden = true;
+    bar.value = 0;
+    delete bar.dataset.level;
+    return;
+  }
+  if (!S.usage) {
+    const total = S.files.reduce((n, f) => n + f.size, 0);
+    stats.textContent = `${S.files.length} 个文件 · ${size(total)}`;
+    bar.hidden = true;
+    return;
+  }
+  const used = S.usage.used_bytes;
+  const max = Math.max(1, S.usage.max_project_bytes || 1);
+  const ratio = Math.min(1, used / max);
+  const reserved = S.usage.reserved_bytes ? `（上传预留 ${size(S.usage.reserved_bytes)}）` : "";
+  stats.textContent = `${S.usage.file_count} 个文件 · 已用 ${size(used)} / ${size(S.usage.max_project_bytes)}${reserved}`;
+  bar.max = max;
+  bar.value = Math.min(max, used);
+  bar.dataset.level = ratio >= 0.95 ? "danger" : ratio >= 0.8 ? "warn" : "normal";
+  bar.hidden = false;
 }
 
 function renderFiles() {
@@ -577,6 +769,7 @@ function renderFiles() {
   }
   function appendBranch(branch, parent) {
     for (const [name, child] of [...branch.dirs].sort((a,b) => a[0].localeCompare(b[0]))) {
+      const dirWrap = node("div", undefined, "tree-dir");
       const details = node("details");
       details.dataset.dirPath = child.path;
       details.open = Boolean(query) || S.openDirs.has(child.path) || Boolean(S.editor?.path.startsWith(child.path + "/"));
@@ -592,7 +785,12 @@ function renderFiles() {
         if (details.open) S.openDirs.add(child.path);
         else S.openDirs.delete(child.path);
       });
-      parent.append(details);
+      const dirMenu = buildRowMenu("操作文件夹 " + child.path, [
+        { text: "打包下载", href: `/api/projects/${S.project.id}/archive?${new URLSearchParams({ dir: child.path })}`, icon: "#i-download" },
+        { text: "删除文件夹…", danger: true, onclick: guarded(() => deleteProjectDir(child.path)) }
+      ]);
+      dirWrap.append(details, dirMenu);
+      parent.append(dirWrap);
     }
     for (const f of branch.files.sort((a,b) => a.path.localeCompare(b.path))) {
       const row = node("div", undefined, "tree-file");
@@ -607,36 +805,34 @@ function renderFiles() {
       open.title = f.path + " · " + size(f.size);
       open.setAttribute("aria-pressed", String(f.path === S.editor?.path));
       row.classList.toggle("is-selected", f.path === S.editor?.path);
-      open.append(svgIcon(isScript ? "#i-terminal" : "#i-file"), node("span", f.path.split("/").pop()));
+      open.append(svgIcon(isScript ? "#i-terminal" : "#i-file"), node("span", base));
       open.onclick = guarded(() => openEditor(f.path));
-      const download = linkFor(`/api/projects/${S.project.id}/download?${new URLSearchParams({path:f.path})}`, "", "#i-download");
-      download.className = "file-download";
-      download.setAttribute("aria-label", "下载 " + f.path);
-      download.title = "下载 " + f.path;
-      const remove = node("button", "×", "file-delete");
-      remove.type = "button";
-      remove.title = "删除 " + f.path;
-      remove.setAttribute("aria-label", remove.title);
-      remove.onclick = guarded(() => deleteProjectFile(f));
-      row.append(open, download, remove);
+      const menu = buildRowMenu("操作文件 " + f.path, [
+        { text: "重命名 / 移动…", onclick: () => openRenameFileDialog(f) },
+        { text: "下载", href: `/api/projects/${S.project.id}/download?${new URLSearchParams({ path: f.path })}`, icon: "#i-download" },
+        { text: "删除…", danger: true, onclick: guarded(() => deleteProjectFile(f)) }
+      ]);
+      row.append(open, menu);
       parent.append(row);
     }
   }
   appendBranch(tree, $("files"));
-  const total = S.files.reduce((n,f) => n + f.size, 0);
-  $("project-stats").textContent = S.project ? `${S.files.length} 个文件 · ${size(total)}` : "项目保存代码、数据与结果";
+  renderUsage();
   updateTelemetry();
 }
 
 async function refreshFiles() {
   if (!S.project) return;
   const pid = S.project.id;
-  const files = await api(`/api/projects/${pid}/files`);
+  const [files, pending, usage] = await Promise.all([
+    api(`/api/projects/${pid}/files`),
+    api(`/api/projects/${pid}/uploads`),
+    api(`/api/projects/${pid}/usage`)
+  ]);
   if (S.project?.id !== pid) return;
   S.files = files;
+  S.usage = usage;
   renderFiles();
-  const pending = await api(`/api/projects/${pid}/uploads`);
-  if (S.project?.id !== pid) return;
   for (const u of pending) {
     if (!S.transfers.some(t => t.uid === u.id)) {
       S.transfers.push({
@@ -661,6 +857,7 @@ async function selectProject(p) {
   S.editor = null;
   renderEditor();
   S.project = p;
+  S.usage = null;
   S.files = [];
   renderFiles();
   S.pendingSubmit = null;
@@ -677,11 +874,28 @@ async function selectProject(p) {
   if (initial) await openEditor(initial.path, false);
 }
 
+async function refreshSystemStatus() {
+  if (!S.me) return;
+  const st = await api("/api/system/status");
+  if (!S.me) return;
+  S.systemStatus = st;
+  const el = $("system-status");
+  const sep = $("system-status-sep");
+  const lowDisk = st.disk_free_bytes < st.disk_min_free_bytes * 2;
+  el.textContent = `磁盘剩余 ${size(st.disk_free_bytes)} · 排队 ${st.queued_jobs}`;
+  el.dataset.lowDisk = String(lowDisk);
+  el.title = `磁盘保留下限：${size(st.disk_min_free_bytes)} · 全组运行中：${st.active_jobs} · 全组排队：${st.queued_jobs}`;
+  el.hidden = false;
+  sep.hidden = false;
+}
+
 async function enter() {
   S.me = await api("/api/me");
   $("identity").textContent = S.me.name;
   $("identity-role").hidden = !S.me.admin;
+  $("user-menu").hidden = false;
   $("logout").hidden = false;
+  $("preview-notice").hidden = !S.config?.development;
   if ($("login")) $("login").hidden = true;
   $("members-toggle").hidden = !S.me.admin;
   $("workspace").hidden = false;
@@ -693,7 +907,7 @@ async function enter() {
   renderProjects();
   if (S.projects.length) await selectProject(S.projects[0]);
   setConsoleSize(consoleSize);
-  await refreshJobs(true);
+  await Promise.all([refreshJobs(true), refreshSystemStatus().catch(() => {})]);
 }
 
 function renderJobs() {
@@ -750,7 +964,8 @@ function renderJobs() {
     const when = new Date(j.submitted * 1000).toLocaleString("zh-CN");
     const projectName = projectNameFor(j);
     const timeLine = node("p");
-    const rel = node("span", relativeTime(j.submitted));
+    const rel = node("span", relativeTime(j.submitted), "job-rel-time");
+    rel.dataset.submitted = String(j.submitted);
     rel.title = when;
     timeLine.title = when;
     timeLine.append(rel, document.createTextNode(` · ${j.id.slice(0, 8)}`));
@@ -766,7 +981,11 @@ function renderJobs() {
   }
   if (finishedJobs.length) {
     $("jobs").append(node("h3", "最近结束", "job-group-title"));
-    for (const j of finishedJobs) $("jobs").append(buildJobCard(j));
+    for (const j of finishedJobs.slice(0, 8)) $("jobs").append(buildJobCard(j));
+  }
+  const historyBtnSpan = document.querySelector(".history-link span");
+  if (historyBtnSpan) {
+    historyBtnSpan.textContent = finishedJobs.length > 8 ? `查看全部 ${S.jobs.length} 条任务` : "查看全部任务";
   }
 
   for (const j of filtered) {
@@ -790,12 +1009,44 @@ function renderJobs() {
     const timeCell = node("td", when);
     timeCell.title = when;
     const action = node("td");
+    const actionWrap = node("div", undefined, "table-actions");
     const open = node("button", "查看输出", "quiet");
     open.type = "button";
     open.onclick = guarded(() => openJob(j.id));
-    action.append(open);
+    actionWrap.append(open);
+    if (j.owner === S.me.id) {
+      const rerun = node("button", "重新运行", "quiet");
+      rerun.type = "button";
+      rerun.onclick = guarded(() => rerunJob(j));
+      actionWrap.append(rerun);
+    }
+    action.append(actionWrap);
     row.append(script, projectCell, state, timeCell, action);
     $("job-history").append(row);
+  }
+}
+
+async function rerunJob(job) {
+  if (!S.me || job.owner !== S.me.id) throw new Error("只能重新运行自己的任务。");
+  if (S.submitting) return;
+  let pending = S.pendingReruns[job.id];
+  if (!pending) {
+    pending = { request_id: crypto.randomUUID() };
+    S.pendingReruns[job.id] = pending;
+  }
+  S.submitting = true;
+  editorControls();
+  try {
+    const submitted = await api(`/api/jobs/${job.id}/rerun`, "POST", { request_id: pending.request_id });
+    delete S.pendingReruns[job.id];
+    message("已重新提交任务");
+    await refreshJobs();
+    await refreshSystemStatus().catch(() => {});
+    setQueue(true);
+    await openJob(submitted.id);
+  } finally {
+    S.submitting = false;
+    editorControls();
   }
 }
 
@@ -820,6 +1071,12 @@ function syncConsoleEmptyState() {
   $("job-results").hidden = !hasJob;
   $("copy-log").hidden = !hasJob;
   $("clear-console").hidden = !hasJob;
+  if (!hasJob) {
+    $("job-queue-pos").hidden = true;
+    $("rerun-job").hidden = true;
+    $("view-snapshot").hidden = true;
+    $("outputs-archive").hidden = true;
+  }
 }
 
 syncConsoleEmptyState();
@@ -827,6 +1084,7 @@ $("console-open-queue").onclick = () => setQueue(true);
 
 async function openJob(id) {
   S.detail = id;
+  S.detailJob = null;
   S.offset = 0;
   S.log = "";
   syncConsoleEmptyState();
@@ -838,15 +1096,73 @@ async function openJob(id) {
   await refreshDetail();
 }
 
+async function openSnapshotDialog(jid) {
+  const list = $("snapshot-files");
+  list.replaceChildren();
+  $("snapshot-meta").textContent = "正在读取…";
+  $("snapshot-preview-head").hidden = true;
+  $("snapshot-text").hidden = true;
+  $("snapshot-binary").hidden = true;
+  $("snapshot-preview-empty").hidden = false;
+  $("snapshot-preview-empty").textContent = "正在读取快照文件列表…";
+  $("snapshot-dialog").showModal();
+  const files = await api(`/api/jobs/${jid}/snapshot/files`);
+  $("snapshot-meta").textContent = `${files.length} 个文件`;
+  if (!files.length) {
+    $("snapshot-preview-empty").textContent = "该次提交没有文件。";
+    return;
+  }
+  $("snapshot-preview-empty").textContent = "从左侧选择文件查看只读内容或下载。";
+  for (const f of files) {
+    const li = node("li", undefined, "snapshot-file-row");
+    const btn = node("button", undefined, "snapshot-file-btn");
+    btn.type = "button";
+    btn.title = f.path;
+    btn.append(node("span", f.path), node("span", size(f.size), "snapshot-file-size"));
+    btn.onclick = guarded(async () => {
+      list.querySelectorAll(".snapshot-file-row").forEach(el => el.classList.toggle("is-selected", el === li));
+      const dlUrl = `/api/jobs/${jid}/snapshot/download?${new URLSearchParams({ path: f.path })}`;
+      $("snapshot-file-path").textContent = f.path;
+      $("snapshot-file-download").href = dlUrl;
+      $("snapshot-preview-head").hidden = false;
+      $("snapshot-preview-empty").hidden = true;
+      $("snapshot-text").hidden = true;
+      $("snapshot-binary").hidden = true;
+      try {
+        const textData = await api(`/api/jobs/${jid}/snapshot/text?${new URLSearchParams({ path: f.path })}`);
+        $("snapshot-text").textContent = textData.text.replace(/\r\n/g, "\n");
+        $("snapshot-text").hidden = false;
+      } catch (err) {
+        if (err.status !== 415) throw err;
+        $("snapshot-binary-note").textContent = err.message || "此文件不支持文本预览，请下载后查看。";
+        $("snapshot-binary-download").href = dlUrl;
+        $("snapshot-binary").hidden = false;
+      }
+    });
+    li.append(btn);
+    list.append(li);
+  }
+}
+
 async function refreshDetail() {
   const id = S.detail;
   const j = await api(`/api/jobs/${id}`);
   if (S.detail !== id) return;
+  S.detailJob = j;
   $("job-title").textContent = j.entry;
   const badge = $("job-dialog-status");
   badge.textContent = states[j.state] || j.state;
   badge.className = "status " + j.state;
   badge.hidden = false;
+  const qpos = $("job-queue-pos");
+  if (j.state === "queued" && Number.isInteger(j.queue_position)) {
+    qpos.textContent = `前面还有 ${Math.max(0, j.queue_position - 1)} 个任务`;
+    qpos.hidden = false;
+  } else {
+    qpos.hidden = true;
+  }
+  $("rerun-job").hidden = j.owner !== S.me.id;
+  $("view-snapshot").hidden = false;
   const projectName = S.projects.find(p => p.id === j.project)?.name || "其他项目";
   $("job-detail").textContent = `任务 ${j.id.slice(0, 10)} · ${projectName} · ${j.environment} · ${j.reason || "每次提交独立保存文件"}${j.exit_code !== null ? " · 退出码 " + j.exit_code : ""}`;
   $("cancel-job").hidden = terminal(j.state) || j.state === "cancelling";
@@ -865,14 +1181,24 @@ async function refreshDetail() {
   $("log-note").textContent = log.truncated ? "日志已达到保存上限，部分内容被截断。" : "日志会自动刷新。";
   $("job-outputs").replaceChildren();
   $("output-count").textContent = "";
+  const archiveBtn = $("outputs-archive");
   if (!terminal(j.state)) {
+    archiveBtn.hidden = true;
+    archiveBtn.removeAttribute("href");
     $("job-outputs").append(node("p", "任务结束后开放结果下载。", "muted"));
     return;
   }
   const files = await api(`/api/jobs/${id}/outputs`);
   if (S.detail !== id) return;
   $("output-count").textContent = files.length ? String(files.length) : "";
-  if (!files.length) $("job-outputs").append(node("p", "没有结果文件。", "muted"));
+  if (files.length) {
+    archiveBtn.href = `/api/jobs/${id}/outputs/archive`;
+    archiveBtn.hidden = false;
+  } else {
+    archiveBtn.hidden = true;
+    archiveBtn.removeAttribute("href");
+    $("job-outputs").append(node("p", "没有结果文件。", "muted"));
+  }
   for (const f of files) {
     $("job-outputs").append(linkFor(`/api/jobs/${id}/download?${new URLSearchParams({ path: f.path })}`, `${f.path} · ${size(f.size)}`, "#i-download"));
   }
@@ -1199,6 +1525,108 @@ $("project-form").onsubmit = guarded(async e => {
   message("项目已创建");
 });
 
+$("rename-project").onclick = () => {
+  if (!S.project) return;
+  const input = $("rename-project-name");
+  input.value = S.project.name;
+  $("rename-project-error").hidden = true;
+  $("rename-project-error").textContent = "";
+  $("rename-project-dialog").showModal();
+  input.focus();
+  input.select();
+};
+
+$("rename-project-form").onsubmit = guarded(async e => {
+  e.preventDefault();
+  if (!S.project) return;
+  const pid = S.project.id;
+  $("rename-project-error").hidden = true;
+  try {
+    const updated = await api(`/api/projects/${pid}`, "PATCH", { name: $("rename-project-name").value });
+    const target = S.projects.find(p => p.id === pid);
+    if (target) target.name = updated.name;
+    if (S.project?.id === pid) {
+      S.project.name = updated.name;
+      $("project-name").textContent = updated.name;
+    }
+    $("rename-project-dialog").close();
+    renderProjects();
+    renderJobs();
+    message("项目已重命名");
+  } catch (err) {
+    $("rename-project-error").textContent = err.message;
+    $("rename-project-error").hidden = false;
+    throw err;
+  }
+});
+
+$("delete-project").onclick = guarded(async () => {
+  if (!S.project) return;
+  if (S.busy || S.editingBusy) throw new Error("请等待当前文件操作完成。");
+  const target = S.project;
+  if (!await ask(`永久删除项目“${target.name}”及其全部文件？此操作无法撤销；已提交任务的历史记录与日志仍会保留。`, { expect: target.name })) return;
+  await api(`/api/projects/${target.id}`, "DELETE");
+  S.projects = S.projects.filter(p => p.id !== target.id);
+  S.transfers = S.transfers.filter(t => t.pid !== target.id);
+  S.editor = null;
+  S.project = null;
+  S.usage = null;
+  S.files = [];
+  if (S.projects.length) {
+    await selectProject(S.projects[0]);
+  } else {
+    renderEditor();
+    renderProjects();
+    renderFiles();
+    renderTransfers();
+    $("project-name").textContent = "尚未选择项目";
+    $("project-content").hidden = true;
+    $("project-empty").hidden = false;
+  }
+  await Promise.all([refreshJobs(true), refreshSystemStatus().catch(() => {})]);
+  message("项目已删除");
+});
+
+$("rename-file-form").onsubmit = guarded(async e => {
+  e.preventDefault();
+  const file = S.renamingFile;
+  if (!S.project || !file) return;
+  const pid = S.project.id;
+  const newPath = $("rename-file-path").value.trim().replace(/\\/g, "/");
+  if (!newPath) return;
+  if (newPath === file.path) {
+    $("rename-file-dialog").close();
+    return;
+  }
+  $("rename-file-error").hidden = true;
+  try {
+    const res = await api(`/api/projects/${pid}/files/rename`, "POST", { path: file.path, new_path: newPath, version: file.version });
+    $("rename-file-dialog").close();
+    S.renamingFile = null;
+    if (S.editor?.path === file.path) {
+      if (S.editor.dirty) {
+        S.editor.path = res.path;
+        S.editor.version = res.version;
+        renderEditor();
+      } else {
+        await openEditor(res.path, false);
+      }
+    }
+    await refreshFiles();
+    revealFileInTree(res.path);
+    message("文件已重命名 / 移动");
+  } catch (err) {
+    $("rename-file-error").textContent = err.message;
+    $("rename-file-error").hidden = false;
+    if (err.status === 409) {
+      await refreshFiles().catch(() => {});
+      const latest = S.files.find(x => x.path === file.path);
+      if (latest) S.renamingFile = latest;
+    }
+    throw err;
+  }
+});
+
 document.querySelectorAll(".close-dialog").forEach(b => b.onclick = () => b.closest("dialog").close());
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 $("queue-toggle").onclick = () => setQueue(S.view === "history" || !S.queueOpen);
@@ -1339,6 +1767,7 @@ async function queueScript(entry) {
     S.pendingSubmit = null;
     message("已加入队列。当前预览尚未接入执行器。");
     await refreshJobs();
+    await refreshSystemStatus().catch(() => {});
     setQueue(true);
     await openJob(job.id);
   } finally {
@@ -1346,15 +1775,25 @@ async function queueScript(entry) {
     renderEditor();
   }
 }
+$("rerun-job").onclick = guarded(() => {
+  const job = S.detailJob || S.jobs.find(j => j.id === S.detail);
+  if (job) return rerunJob(job);
+});
+$("view-snapshot").onclick = guarded(() => {
+  if (S.detail) return openSnapshotDialog(S.detail);
+});
+$("outputs-archive").onclick = e => e.stopPropagation();
 $("cancel-job").onclick = guarded(async () => {
   if (!await ask("取消这个任务？")) return;
   await api(`/api/jobs/${S.detail}/cancel`, "POST", {});
   await refreshJobs();
+  await refreshSystemStatus().catch(() => {});
   message("已提交取消请求");
 });
 
 $("clear-console").onclick = () => {
   S.detail = null;
+  S.detailJob = null;
   S.log = "";
   S.offset = 0;
   syncConsoleEmptyState();
@@ -1369,20 +1808,67 @@ $("clear-console").onclick = () => {
   renderJobs();
 };
 
+function setProdAuthState(state, detail) {
+  const panel = $("prod-auth-panel");
+  if (!panel) return;
+  panel.dataset.state = state;
+  panel.querySelectorAll("[data-auth-view]").forEach(el => {
+    el.hidden = el.dataset.authView !== state;
+  });
+  if (detail && $("prod-auth-detail")) {
+    $("prod-auth-detail").textContent = detail;
+  }
+}
+
+if ($("relogin-btn")) $("relogin-btn").onclick = () => location.reload();
+
+function refreshRelativeTimes() {
+  document.querySelectorAll("#jobs .job-rel-time[data-submitted]").forEach(el => {
+    const next = relativeTime(Number(el.dataset.submitted));
+    if (el.textContent !== next) el.textContent = next;
+  });
+}
+
 async function boot() {
   S.config = await api("/api/config");
-  $("preview-notice").hidden = !S.config.development;
+  $("preview-notice").hidden = true;
+  $("user-menu").hidden = true;
   $("environment").replaceChildren();
   for (const [key, label] of Object.entries(S.config.environments)) {
     const o = node("option", label);
     o.value = key;
     $("environment").append(o);
   }
+  const devSelect = Boolean(S.config.development && !S.config.password_auth);
+  if ($("dev-login-panel")) $("dev-login-panel").hidden = !devSelect;
+  if ($("prod-auth-panel")) $("prod-auth-panel").hidden = devSelect || Boolean(S.config.password_auth);
+  if (!devSelect && !S.config.password_auth) {
+    setProdAuthState("loading");
+  }
   try {
     await enter();
   } catch (e) {
+    if (S.config.password_auth) {
+      if (e.status === 401) {
+        location.replace("/login");
+        return;
+      }
+      throw e;
+    }
+    if (!S.config.development) {
+      if ($("login")) $("login").hidden = false;
+      if (e.status === 403) {
+        setProdAuthState("forbidden");
+        return;
+      }
+      if (e.status === 401) {
+        setProdAuthState("expired");
+        return;
+      }
+      setProdAuthState("expired", e.message);
+      return;
+    }
     if (e.status !== 401) throw e;
-    if (S.config.password_auth) location.replace("/login");
   }
 }
 
@@ -1390,3 +1876,9 @@ guarded(boot)();
 setInterval(() => {
   if (S.me && !document.hidden) guarded(refreshJobs)();
 }, 4000);
+setInterval(() => {
+  if (S.me && !document.hidden) {
+    refreshRelativeTimes();
+    refreshSystemStatus().catch(() => {});
+  }
+}, 30000);
